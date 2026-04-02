@@ -144,6 +144,29 @@ fun StatusScreen() {
             }
         }
 
+        // Bluetooth permission
+        val bluetoothGranted = remember(tick) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_SCAN) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
+                context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            } else {
+                true
+            }
+        }
+
+        ServiceStatusRow("蓝牙权限", bluetoothGranted) {
+            try {
+                context.startActivity(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = android.net.Uri.parse("package:${context.packageName}")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                )
+            } catch (e: Exception) {
+                Toast.makeText(context, "无法打开应用设置", Toast.LENGTH_SHORT).show()
+            }
+        }
+
         // Usage stats permission
         val app = context.applicationContext as? com.monika.dashboard.DashboardApp
         val usageGranted = remember(tick) { app?.foregroundAppDetector?.hasUsageStatsPermission() == true }

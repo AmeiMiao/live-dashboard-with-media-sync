@@ -29,6 +29,20 @@ fun HealthScreen(settings: SettingsStore) {
 
     var heartRate by remember { mutableIntStateOf(0) }
     var tick by remember { mutableIntStateOf(0) }
+    var bluetoothGranted by remember { mutableStateOf(false) }
+
+    // Check Bluetooth permissions
+    LaunchedEffect(Unit) {
+        while (true) {
+            bluetoothGranted = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_SCAN) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
+                context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            } else {
+                true
+            }
+            delay(2000)
+        }
+    }
 
     // Poll heart rate from server
     LaunchedEffect(Unit) {
@@ -139,6 +153,10 @@ fun HealthScreen(settings: SettingsStore) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
                         onClick = {
+                            if (!bluetoothGranted) {
+                                Toast.makeText(context, "请先在状态页开启蓝牙权限", Toast.LENGTH_SHORT).show()
+                                return@OutlinedButton
+                            }
                             val intent = Intent(context, HeartRateService::class.java)
                             intent.action = "START_SCAN"
                             context.startService(intent)
