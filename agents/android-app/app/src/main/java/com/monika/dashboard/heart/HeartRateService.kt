@@ -24,6 +24,8 @@ class HeartRateService : Service() {
         private const val CHANNEL_ID = "heart_rate_channel"
         private const val NOTIFICATION_ID = 1002
         private const val MIN_REPORT_INTERVAL_MS = 30000L
+        private const val PREFS_NAME = "heart_rate_prefs"
+        private const val KEY_DEVICE_ADDRESS = "last_connected_device_address"
         
         @Volatile var isServiceRunning = false
             private set
@@ -43,6 +45,16 @@ class HeartRateService : Service() {
     private var lastReportTime: Long = 0
     private var lastHeartRate: Int = 0
 
+    private fun getPrefs() = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+
+    private fun saveDeviceAddress(address: String?) {
+        getPrefs().edit().putString(KEY_DEVICE_ADDRESS, address).apply()
+    }
+
+    private fun getSavedDeviceAddress(): String? {
+        return getPrefs().getString(KEY_DEVICE_ADDRESS, null)
+    }
+
     override fun onCreate() {
         super.onCreate()
         isServiceRunning = true
@@ -54,7 +66,19 @@ class HeartRateService : Service() {
 
             override fun onConnectionStateChanged(connected: Boolean) {
                 isConnected = connected
-                if (!connected) connectedDeviceName = null
+                if (connected) {
+                    connectedDeviceName = heartRateManager.getConnectedDeviceName()
+                    // Save the connected device address
+                    connectedDeviceName?.let { name ->
+                        val device = discoveredDevices.values.firstOrNull { d ->
+                            try { d.name == name } catch (_: SecurityException) { false }
+                        }
+                        device?.address?.let { saveDeviceAddress(it) }
+                    }
+                } else {
+                    connectedDeviceName = null
+                    currentHeartRate = 0
+                }
                 DebugLog.log("心率", if (connected) "已连接" else "已断开")
             }
 
@@ -65,6 +89,16 @@ class HeartRateService : Service() {
             override fun onScanComplete(devices: Map<String, BluetoothDevice>) {
                 discoveredDevices = devices
                 DebugLog.log("心率", "扫描完成，找到 ${devices.size} 个设备")
+                
+                // Try to reconnect to saved device
+                val savedAddress = getSavedDeviceAddress()
+                if (savedAddress != null && !isConnected) {
+                    val device = devices.values.firstOrNull { it.address == savedAddress }
+                    if (device != null) {
+                        DebugLog.log("心率", "尝试重连已保存设备: ${device.name ?: savedAddress}")
+                        connectToDevice(device)
+                    }
+                }
             }
 
             override fun onError(message: String) {
@@ -78,6 +112,13 @@ class HeartRateService : Service() {
             startForeground(NOTIFICATION_ID, createNotification(false))
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start foreground", e)
+        }
+
+        // Try to reconnect to saved device on service start
+        val savedAddress = getSavedDeviceAddress()
+        if (savedAddress != null && !isConnected && heartRateManager.isBluetoothEnabled()) {
+            DebugLog.log("心率", "服务启动，尝试重连已保存设备")
+            startScan()
         }
     }
 
