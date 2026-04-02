@@ -18,6 +18,7 @@ import com.monika.dashboard.ui.theme.Border
 import com.monika.dashboard.ui.theme.Secondary
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import kotlinx.coroutines.flow.first
 
 @Composable
 fun HealthScreen(settings: SettingsStore) {

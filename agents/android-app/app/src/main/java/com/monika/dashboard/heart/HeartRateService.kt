@@ -65,15 +65,7 @@ class HeartRateService : Service() {
             "START_SCAN" -> startScan()
             "STOP_SCAN" -> stopScan()
             "CONNECT" -> {
-                val address = intent.getStringExtra("device_address")
-                if (address != null) {
-                    val device = try {
-                        heartRateManager.bluetoothAdapter?.getRemoteDevice(address)
-                    } catch (e: Exception) {
-                        null
-                    }
-                    device?.let { heartRateManager.connectToDevice(it) }
-                }
+                // Not implemented - connection is handled by scan result
             }
         }
         return START_STICKY
