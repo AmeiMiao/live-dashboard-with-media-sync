@@ -21,6 +21,7 @@ import com.monika.dashboard.heart.HeartRateService
 import com.monika.dashboard.ui.theme.Border
 import com.monika.dashboard.ui.theme.Secondary
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun HealthScreen(settings: SettingsStore) {
@@ -181,6 +182,7 @@ fun HealthScreen(settings: SettingsStore) {
 
         // Heart rate report interval setting
         var heartRateInterval by remember { mutableIntStateOf(30) }
+        val scope = rememberCoroutineScope()
         LaunchedEffect(Unit) {
             heartRateInterval = settings.getHeartRateReportInterval()
         }
@@ -216,7 +218,7 @@ fun HealthScreen(settings: SettingsStore) {
                     valueRange = 10f..300f,
                     steps = 28,
                     onValueChangeFinished = {
-                        kotlinx.coroutines.GlobalScope.launch {
+                        scope.launch {
                             settings.setHeartRateReportInterval(heartRateInterval)
                         }
                     }
