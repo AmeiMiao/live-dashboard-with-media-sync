@@ -9,7 +9,6 @@ import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
-import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.monika.dashboard.R
 import com.monika.dashboard.data.DebugLog
@@ -25,6 +24,15 @@ class HeartRateService : Service() {
         private const val CHANNEL_ID = "heart_rate_channel"
         private const val NOTIFICATION_ID = 1002
         private const val MIN_REPORT_INTERVAL_MS = 30000L
+        
+        @Volatile var isServiceRunning = false
+            private set
+        @Volatile var discoveredDevices: Map<String, BluetoothDevice> = emptyMap()
+            private set
+        @Volatile var isConnected = false
+            private set
+        @Volatile var connectedDeviceName: String? = null
+            private set
     }
 
     private lateinit var settings: SettingsStore
@@ -32,11 +40,10 @@ class HeartRateService : Service() {
     private val executor = Executors.newSingleThreadExecutor()
     private var lastReportTime: Long = 0
     private var lastHeartRate: Int = 0
-    var discoveredDevices: Map<String, BluetoothDevice> = emptyMap()
-        private set
 
     override fun onCreate() {
         super.onCreate()
+        isServiceRunning = true
         settings = SettingsStore(applicationContext)
         heartRateManager = BluetoothHeartRateManager(applicationContext, object : BluetoothHeartRateManager.HeartRateCallback {
             override fun onHeartRateReceived(heartRate: Int) {
@@ -44,12 +51,13 @@ class HeartRateService : Service() {
             }
 
             override fun onConnectionStateChanged(connected: Boolean) {
-                updateNotification(connected)
+                isConnected = connected
+                if (!connected) connectedDeviceName = null
                 DebugLog.log("心率", if (connected) "已连接" else "已断开")
             }
 
             override fun onScanResult(device: BluetoothDevice) {
-                // Real-time scan result
+                // Real-time scan result - no action needed
             }
 
             override fun onScanComplete(devices: Map<String, BluetoothDevice>) {
@@ -64,7 +72,11 @@ class HeartRateService : Service() {
         })
 
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, createNotification(false))
+        try {
+            startForeground(NOTIFICATION_ID, createNotification(false))
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start foreground", e)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -75,7 +87,10 @@ class HeartRateService : Service() {
                 val address = intent.getStringExtra("device_address")
                 if (address != null) {
                     val device = discoveredDevices.values.firstOrNull { it.address == address }
-                    device?.let { connectToDevice(it) }
+                    device?.let {
+                        connectedDeviceName = it.name ?: it.address
+                        connectToDevice(it)
+                    }
                 }
             }
         }
@@ -85,6 +100,9 @@ class HeartRateService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        isServiceRunning = false
+        isConnected = false
+        discoveredDevices = emptyMap()
         heartRateManager.disconnect()
         super.onDestroy()
     }
@@ -104,6 +122,7 @@ class HeartRateService : Service() {
         }
         
         try {
+            discoveredDevices = emptyMap()
             heartRateManager.startScan()
             DebugLog.log("心率", "开始扫描蓝牙设备")
         } catch (e: Exception) {
@@ -120,7 +139,7 @@ class HeartRateService : Service() {
         DebugLog.log("心率", "正在连接: ${device.name ?: device.address}")
     }
 
-    fun isScanning(): Boolean = discoveredDevices.isNotEmpty() || !heartRateManager.isConnected()
+    fun isScanning(): Boolean = !heartRateManager.isConnected()
 
     fun getHeartRateManager(): BluetoothHeartRateManager = heartRateManager
 
@@ -134,7 +153,6 @@ class HeartRateService : Service() {
 
         lastReportTime = now
         lastHeartRate = heartRate
-        updateNotification(true, heartRate)
         executor.execute { reportHeartRate(heartRate) }
     }
 
@@ -193,11 +211,5 @@ class HeartRateService : Service() {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .build()
-    }
-
-    private fun updateNotification(connected: Boolean, heartRate: Int? = null) {
-        val notification = createNotification(connected, heartRate)
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.notify(NOTIFICATION_ID, notification)
     }
 }

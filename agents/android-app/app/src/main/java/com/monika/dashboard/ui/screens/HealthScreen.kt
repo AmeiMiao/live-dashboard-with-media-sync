@@ -28,10 +28,7 @@ fun HealthScreen(settings: SettingsStore) {
     val context = LocalContext.current
 
     var heartRate by remember { mutableIntStateOf(0) }
-    var isConnected by remember { mutableStateOf(false) }
-    var connectedDeviceName by remember { mutableStateOf<String?>(null) }
-    var discoveredDevices by remember { mutableStateOf<Map<String, BluetoothDevice>>(emptyMap()) }
-    var isScanning by remember { mutableStateOf(false) }
+    var tick by remember { mutableIntStateOf(0) }
 
     // Poll heart rate from server
     LaunchedEffect(Unit) {
@@ -66,9 +63,14 @@ fun HealthScreen(settings: SettingsStore) {
                     }
                 } catch (_: Exception) {}
             }
-            delay(5000)
+            delay(3000)
+            tick++
         }
     }
+
+    val isConnected = HeartRateService.isConnected
+    val connectedDeviceName = HeartRateService.connectedDeviceName
+    val discoveredDevices = HeartRateService.discoveredDevices
 
     Column(
         modifier = Modifier
@@ -129,9 +131,9 @@ fun HealthScreen(settings: SettingsStore) {
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        text = if (isConnected) "已连接" else if (isScanning) "扫描中..." else "未连接",
+                        text = if (isConnected) "已连接" else if (discoveredDevices.isNotEmpty()) "已发现 ${discoveredDevices.size} 个设备" else "未连接",
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (isConnected) Secondary else if (isScanning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                        color = if (isConnected) Secondary else MaterialTheme.colorScheme.error
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -140,12 +142,10 @@ fun HealthScreen(settings: SettingsStore) {
                             val intent = Intent(context, HeartRateService::class.java)
                             intent.action = "START_SCAN"
                             context.startService(intent)
-                            isScanning = true
-                            discoveredDevices = emptyMap()
                             Toast.makeText(context, "开始扫描蓝牙设备", Toast.LENGTH_SHORT).show()
                         },
                         shape = RoundedCornerShape(8.dp),
-                        enabled = !isScanning
+                        enabled = !isConnected
                     ) {
                         Text("扫描")
                     }
@@ -155,7 +155,6 @@ fun HealthScreen(settings: SettingsStore) {
                                 val intent = Intent(context, HeartRateService::class.java)
                                 intent.action = "STOP_SCAN"
                                 context.startService(intent)
-                                isScanning = false
                             },
                             shape = RoundedCornerShape(8.dp)
                         ) {
@@ -167,7 +166,7 @@ fun HealthScreen(settings: SettingsStore) {
         }
 
         // Discovered devices list
-        if (isScanning || discoveredDevices.isNotEmpty()) {
+        if (discoveredDevices.isNotEmpty()) {
             Text(
                 text = "发现的设备 (${discoveredDevices.size})",
                 style = MaterialTheme.typography.titleMedium
@@ -180,53 +179,40 @@ fun HealthScreen(settings: SettingsStore) {
                     .border(1.dp, Border, RoundedCornerShape(8.dp))
                     .padding(8.dp)
             ) {
-                if (discoveredDevices.isEmpty()) {
-                    item {
-                        Text(
-                            text = if (isScanning) "正在扫描..." else "未发现设备",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(8.dp)
-                        )
-                    }
-                } else {
-                    items(discoveredDevices.entries.toList()) { (name, device) ->
-                        Surface(
+                items(discoveredDevices.entries.toList()) { (name, device) ->
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                val intent = Intent(context, HeartRateService::class.java)
+                                intent.action = "CONNECT"
+                                intent.putExtra("device_address", device.address)
+                                context.startService(intent)
+                            }
+                            .padding(vertical = 4.dp),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    val intent = Intent(context, HeartRateService::class.java)
-                                    intent.action = "CONNECT"
-                                    intent.putExtra("device_address", device.address)
-                                    context.startService(intent)
-                                    connectedDeviceName = name
-                                    isScanning = false
-                                }
-                                .padding(vertical = 4.dp),
-                            shape = RoundedCornerShape(8.dp)
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                            Text(
+                                text = "📱",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "📱",
+                                    text = name,
                                     style = MaterialTheme.typography.bodyMedium
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = name,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                    Text(
-                                        text = device.address,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
+                                Text(
+                                    text = device.address,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
                     }
@@ -240,14 +226,7 @@ fun HealthScreen(settings: SettingsStore) {
             style = MaterialTheme.typography.titleMedium
         )
 
-        val logs = remember { mutableStateListOf<String>() }
-        LaunchedEffect(Unit) {
-            while (true) {
-                logs.clear()
-                logs.addAll(DebugLog.lines)
-                delay(1000)
-            }
-        }
+        val logs = remember(tick) { DebugLog.lines.toList() }
 
         LazyColumn(
             modifier = Modifier
