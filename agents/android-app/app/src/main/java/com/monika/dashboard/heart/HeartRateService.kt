@@ -15,6 +15,8 @@ import com.monika.dashboard.R
 import com.monika.dashboard.data.DebugLog
 import com.monika.dashboard.data.SettingsStore
 import com.monika.dashboard.network.ReportClient
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import java.util.concurrent.Executors
 
 class HeartRateService : Service() {
@@ -118,7 +120,7 @@ class HeartRateService : Service() {
     }
 
     private fun reportHeartRate(heartRate: Int) {
-        val url = try { settings.serverUrl.first() } catch (_: Exception) { "" }
+        val url = try { runBlocking { settings.serverUrl.first() } } catch (_: Exception) { "" }
         val token = settings.getToken()
         if (url.isEmpty() || token.isNullOrEmpty()) return
 
