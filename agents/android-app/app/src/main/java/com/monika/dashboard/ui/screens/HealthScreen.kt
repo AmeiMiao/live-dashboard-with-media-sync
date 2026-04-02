@@ -26,27 +26,21 @@ import kotlinx.coroutines.delay
 @Composable
 fun HealthScreen(settings: SettingsStore) {
     val context = LocalContext.current
-
     var heartRate by remember { mutableIntStateOf(0) }
     var tick by remember { mutableIntStateOf(0) }
     var bluetoothGranted by remember { mutableStateOf(false) }
 
-    // Check Bluetooth permissions
     LaunchedEffect(Unit) {
         while (true) {
             bluetoothGranted = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_SCAN) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
-                context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_SCAN) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED &&
+                context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
             } else {
                 true
             }
-            delay(2000)
-        }
-    }
 
-    // Poll heart rate from server every 3 seconds
-    LaunchedEffect(Unit) {
-        while (true) {
             try {
                 val url = settings.serverUrl.first()
                 val token = settings.getToken()
@@ -79,47 +73,7 @@ fun HealthScreen(settings: SettingsStore) {
             } catch (e: Exception) {
                 DebugLog.log("健康", "获取心率失败: ${e.message}")
             }
-            delay(3000)
-            tick++
-        }
-    }
-            delay(2000)
-        }
-    }
 
-    // Poll heart rate from server
-    LaunchedEffect(Unit) {
-        while (true) {
-            val url = try { settings.serverUrl.first() } catch (_: Exception) { "" }
-            val token = settings.getToken()
-            if (url.isNotEmpty() && !token.isNullOrEmpty()) {
-                try {
-                    val client = com.monika.dashboard.network.ReportClient(url, token)
-                    try {
-                        val res = okhttp3.Request.Builder()
-                            .url("${url}/api/current")
-                            .addHeader("Authorization", "Bearer $token")
-                            .get()
-                            .build()
-                        val response = okhttp3.OkHttpClient().newCall(res).execute()
-                        val body = response.body?.string()
-                        response.close()
-                        if (body != null) {
-                            val json = org.json.JSONObject(body)
-                            val devices = json.optJSONArray("devices")
-                            if (devices != null && devices.length() > 0) {
-                                val device = devices.getJSONObject(0)
-                                val extra = device.optJSONObject("extra")
-                                if (extra != null) {
-                                    heartRate = extra.optInt("heart_rate", 0)
-                                }
-                            }
-                        }
-                    } finally {
-                        client.shutdown()
-                    }
-                } catch (_: Exception) {}
-            }
             delay(3000)
             tick++
         }
@@ -140,7 +94,6 @@ fun HealthScreen(settings: SettingsStore) {
             style = MaterialTheme.typography.headlineMedium
         )
 
-        // Heart rate card
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -170,7 +123,6 @@ fun HealthScreen(settings: SettingsStore) {
             }
         }
 
-        // Bluetooth connection status
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -188,11 +140,16 @@ fun HealthScreen(settings: SettingsStore) {
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        text = if (isConnected) "已连接" else if (discoveredDevices.isNotEmpty()) "已发现 ${discoveredDevices.size} 个设备" else "未连接",
+                        text = when {
+                            isConnected -> "已连接"
+                            discoveredDevices.isNotEmpty() -> "已发现 ${discoveredDevices.size} 个设备"
+                            else -> "未连接"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = if (isConnected) Secondary else MaterialTheme.colorScheme.error
                     )
                 }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
                         onClick = {
                             if (!bluetoothGranted) {
@@ -229,13 +186,11 @@ fun HealthScreen(settings: SettingsStore) {
             }
         }
 
-        // Discovered devices list
         if (discoveredDevices.isNotEmpty()) {
             Text(
                 text = "发现的设备 (${discoveredDevices.size})",
                 style = MaterialTheme.typography.titleMedium
             )
-
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -244,58 +199,22 @@ fun HealthScreen(settings: SettingsStore) {
                     .padding(8.dp)
             ) {
                 items(discoveredDevices.entries.toList()) { (name, device) ->
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    val intent = Intent(context, HeartRateService::class.java)
-                                    intent.action = "CONNECT"
-                                    intent.putExtra("device_address", device.address)
-                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                        context.startForegroundService(intent)
-                                    } else {
-                                        context.startService(intent)
-                                    }
-                                }
-                                .padding(vertical = 4.dp),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "📱",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = name,
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                                Text(
-                                    text = device.address,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                    DeviceItem(name = name, device = device, onConnect = {
+                        val intent = Intent(context, HeartRateService::class.java)
+                        intent.action = "CONNECT"
+                        intent.putExtra("device_address", device.address)
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                            context.startForegroundService(intent)
+                        } else {
+                            context.startService(intent)
                         }
-                    }
+                    })
                 }
             }
         }
 
-        // Debug log
-        Text(
-            text = "调试日志",
-            style = MaterialTheme.typography.titleMedium
-        )
-
+        Text(text = "调试日志", style = MaterialTheme.typography.titleMedium)
         val logs = remember(tick) { DebugLog.lines.toList() }
-
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
@@ -308,6 +227,39 @@ fun HealthScreen(settings: SettingsStore) {
                     text = line,
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(vertical = 2.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeviceItem(
+    name: String,
+    device: BluetoothDevice,
+    onConnect: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onConnect() }
+            .padding(vertical = 4.dp),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "📱", style = MaterialTheme.typography.bodyMedium)
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = name, style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    text = device.address,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
