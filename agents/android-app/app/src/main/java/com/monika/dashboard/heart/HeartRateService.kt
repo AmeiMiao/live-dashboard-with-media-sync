@@ -48,7 +48,20 @@ class HeartRateService : Service() {
             }
 
             override fun onScanResult(device: BluetoothDevice) {
-                DebugLog.log("心率", "发现设备: ${device.name ?: device.address}")
+                try {
+                    val name = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        if (checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                            device.name ?: device.address
+                        } else {
+                            device.address
+                        }
+                    } else {
+                        device.name ?: device.address
+                    }
+                    DebugLog.log("心率", "发现设备: $name")
+                } catch (e: SecurityException) {
+                    DebugLog.log("心率", "发现设备: ${device.address}")
+                }
             }
 
             override fun onError(message: String) {
