@@ -6,7 +6,6 @@ import android.app.NotificationManager
 import android.app.Service
 import android.bluetooth.BluetoothDevice
 import android.content.Intent
-import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -59,7 +58,7 @@ class HeartRateService : Service() {
                         device.name ?: device.address
                     }
                     DebugLog.log("心率", "发现设备: $name")
-                } catch (e: SecurityException) {
+                } catch (_: SecurityException) {
                     DebugLog.log("心率", "发现设备: ${device.address}")
                 }
             }
