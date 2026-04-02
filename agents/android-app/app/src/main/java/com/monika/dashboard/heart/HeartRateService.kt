@@ -199,7 +199,8 @@ class HeartRateService : Service() {
 
         currentHeartRate = heartRate
         val now = System.currentTimeMillis()
-        if (now - lastReportTime < MIN_REPORT_INTERVAL_MS && heartRate == lastHeartRate) {
+        val interval = settings.getHeartRateReportInterval() * 1000L // Convert to milliseconds
+        if (now - lastReportTime < interval && heartRate == lastHeartRate) {
             return
         }
 

@@ -26,6 +26,7 @@ class SettingsStore(private val context: Context) {
         val ENABLED_HEALTH_TYPES = stringSetPreferencesKey("enabled_health_types")
         val MONITORING_ENABLED = booleanPreferencesKey("monitoring_enabled")
         val LAST_SYNC_TIMESTAMP = longPreferencesKey("last_sync_timestamp")
+        val HEART_RATE_REPORT_INTERVAL = intPreferencesKey("heart_rate_report_interval")
     }
 
     val serverUrl: Flow<String> = context.dataStore.data.map { prefs ->
@@ -53,6 +54,10 @@ class SettingsStore(private val context: Context) {
         prefs[Keys.LAST_SYNC_TIMESTAMP] ?: 0L
     }
 
+    val heartRateReportInterval: Flow<Int> = context.dataStore.data.map { prefs ->
+        (prefs[Keys.HEART_RATE_REPORT_INTERVAL] ?: 30).coerceIn(10, 300)
+    }
+
     suspend fun setServerUrl(url: String) {
         require(validateUrl(url)) { "Invalid URL: must be HTTPS or http://localhost" }
         context.dataStore.edit { it[Keys.SERVER_URL] = url.trim() }
@@ -69,6 +74,10 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setHealthSyncInterval(minutes: Int) {
         context.dataStore.edit { it[Keys.HEALTH_SYNC_INTERVAL] = minutes.coerceIn(15, 60) }
+    }
+
+    suspend fun setHeartRateReportInterval(seconds: Int) {
+        context.dataStore.edit { it[Keys.HEART_RATE_REPORT_INTERVAL] = seconds.coerceIn(10, 300) }
     }
 
     suspend fun setEnabledHealthTypes(types: Set<String>) {
@@ -117,6 +126,15 @@ class SettingsStore(private val context: Context) {
     fun setToken(token: String): Boolean {
         val prefs = encryptedPrefs ?: return false
         return prefs.edit().putString("token", token).commit()
+    }
+
+    fun getHeartRateReportInterval(): Int {
+        return try {
+            val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+            prefs.getInt("heart_rate_report_interval", 30)
+        } catch (_: Exception) {
+            30
+        }
     }
 
     companion object {

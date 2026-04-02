@@ -179,6 +179,56 @@ fun HealthScreen(settings: SettingsStore) {
             }
         }
 
+        // Heart rate report interval setting
+        var heartRateInterval by remember { mutableIntStateOf(30) }
+        LaunchedEffect(Unit) {
+            heartRateInterval = settings.getHeartRateReportInterval()
+        }
+
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, Border, RoundedCornerShape(8.dp)),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "上报间隔",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        text = "${heartRateInterval}秒",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Secondary
+                    )
+                }
+                Slider(
+                    value = heartRateInterval.toFloat(),
+                    onValueChange = { heartRateInterval = it.toInt() },
+                    valueRange = 10f..300f,
+                    steps = 28,
+                    onValueChangeFinished = {
+                        kotlinx.coroutines.GlobalScope.launch {
+                            settings.setHeartRateReportInterval(heartRateInterval)
+                        }
+                    }
+                )
+                Text(
+                    text = "心率变化时，间隔${heartRateInterval}秒上报一次到服务器",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
         Text(text = "调试日志", style = MaterialTheme.typography.titleMedium)
         val logs = remember(tick) { DebugLog.lines.toList() }
         LazyColumn(
