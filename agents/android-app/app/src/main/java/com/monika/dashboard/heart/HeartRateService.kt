@@ -24,7 +24,7 @@ class HeartRateService : Service() {
         private const val TAG = "HeartRateService"
         private const val CHANNEL_ID = "heart_rate_channel"
         private const val NOTIFICATION_ID = 1002
-        private const val MIN_REPORT_INTERVAL_MS = 30000L // 30 seconds
+        private const val MIN_REPORT_INTERVAL_MS = 30000L
     }
 
     private lateinit var settings: SettingsStore
@@ -32,6 +32,8 @@ class HeartRateService : Service() {
     private val executor = Executors.newSingleThreadExecutor()
     private var lastReportTime: Long = 0
     private var lastHeartRate: Int = 0
+    var discoveredDevices: Map<String, BluetoothDevice> = emptyMap()
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -47,20 +49,12 @@ class HeartRateService : Service() {
             }
 
             override fun onScanResult(device: BluetoothDevice) {
-                try {
-                    val name = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        if (checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                            device.name ?: device.address
-                        } else {
-                            device.address
-                        }
-                    } else {
-                        device.name ?: device.address
-                    }
-                    DebugLog.log("心率", "发现设备: $name")
-                } catch (_: SecurityException) {
-                    DebugLog.log("心率", "发现设备: ${device.address}")
-                }
+                // Real-time scan result
+            }
+
+            override fun onScanComplete(devices: Map<String, BluetoothDevice>) {
+                discoveredDevices = devices
+                DebugLog.log("心率", "扫描完成，找到 ${devices.size} 个设备")
             }
 
             override fun onError(message: String) {
@@ -78,7 +72,11 @@ class HeartRateService : Service() {
             "START_SCAN" -> startScan()
             "STOP_SCAN" -> stopScan()
             "CONNECT" -> {
-                // Not implemented - connection is handled by scan result
+                val address = intent.getStringExtra("device_address")
+                if (address != null) {
+                    val device = discoveredDevices.values.firstOrNull { it.address == address }
+                    device?.let { connectToDevice(it) }
+                }
             }
         }
         return START_STICKY
@@ -96,14 +94,12 @@ class HeartRateService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (checkSelfPermission(android.Manifest.permission.BLUETOOTH_SCAN) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                 DebugLog.log("心率", "蓝牙扫描权限未授予")
-                Toast.makeText(this, "请授予蓝牙权限", Toast.LENGTH_SHORT).show()
                 return
             }
         }
         
         if (!heartRateManager.isBluetoothEnabled()) {
             DebugLog.log("心率", "蓝牙未开启")
-            Toast.makeText(this, "请先开启蓝牙", Toast.LENGTH_SHORT).show()
             return
         }
         
@@ -112,7 +108,6 @@ class HeartRateService : Service() {
             DebugLog.log("心率", "开始扫描蓝牙设备")
         } catch (e: Exception) {
             DebugLog.log("心率", "扫描失败: ${e.message}")
-            Toast.makeText(this, "扫描失败: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -120,24 +115,27 @@ class HeartRateService : Service() {
         heartRateManager.stopScan()
     }
 
+    fun connectToDevice(device: BluetoothDevice) {
+        heartRateManager.connectToDevice(device)
+        DebugLog.log("心率", "正在连接: ${device.name ?: device.address}")
+    }
+
+    fun isScanning(): Boolean = discoveredDevices.isNotEmpty() || !heartRateManager.isConnected()
+
+    fun getHeartRateManager(): BluetoothHeartRateManager = heartRateManager
+
     private fun handleHeartRate(heartRate: Int) {
         if (heartRate !in 1..250) return
 
         val now = System.currentTimeMillis()
         if (now - lastReportTime < MIN_REPORT_INTERVAL_MS && heartRate == lastHeartRate) {
-            return // Skip if same heart rate within interval
+            return
         }
 
         lastReportTime = now
         lastHeartRate = heartRate
-
-        // Update notification with current heart rate
         updateNotification(true, heartRate)
-
-        // Report to server
-        executor.execute {
-            reportHeartRate(heartRate)
-        }
+        executor.execute { reportHeartRate(heartRate) }
     }
 
     private fun reportHeartRate(heartRate: Int) {

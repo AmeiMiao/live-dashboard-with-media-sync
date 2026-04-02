@@ -1,9 +1,13 @@
 package com.monika.dashboard.ui.screens
 
+import android.bluetooth.BluetoothDevice
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -16,56 +20,53 @@ import com.monika.dashboard.data.SettingsStore
 import com.monika.dashboard.heart.HeartRateService
 import com.monika.dashboard.ui.theme.Border
 import com.monika.dashboard.ui.theme.Secondary
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.delay
 
 @Composable
 fun HealthScreen(settings: SettingsStore) {
     val context = LocalContext.current
 
-    // Heart rate state
     var heartRate by remember { mutableIntStateOf(0) }
     var isConnected by remember { mutableStateOf(false) }
     var connectedDeviceName by remember { mutableStateOf<String?>(null) }
-    var heartRateService by remember { mutableStateOf<HeartRateService?>(null) }
+    var discoveredDevices by remember { mutableStateOf<Map<String, BluetoothDevice>>(emptyMap()) }
+    var isScanning by remember { mutableStateOf(false) }
 
-    // Load heart rate from last reported data
+    // Poll heart rate from server
     LaunchedEffect(Unit) {
-        val url = try { settings.serverUrl.first() } catch (_: Exception) { "" }
-        val token = settings.getToken()
-        if (url.isNotEmpty() && !token.isNullOrEmpty()) {
-            try {
-                val client = com.monika.dashboard.network.ReportClient(url, token)
-                val current = try {
-                    client.testConnection()
-                    // Fetch current state to get heart rate
-                    val res = okhttp3.Request.Builder()
-                        .url("${url}/api/current")
-                        .addHeader("Authorization", "Bearer $token")
-                        .get()
-                        .build()
-                    val response = okhttp3.OkHttpClient().newCall(res).execute()
-                    val body = response.body?.string()
-                    response.close()
-                    body
-                } finally {
-                    client.shutdown()
-                }
-                if (current != null) {
-                    val json = org.json.JSONObject(current)
-                    val devices = json.optJSONArray("devices")
-                    if (devices != null && devices.length() > 0) {
-                        val device = devices.getJSONObject(0)
-                        val extra = device.optJSONObject("extra")
-                        if (extra != null) {
-                            heartRate = extra.optInt("heart_rate", 0)
+        while (true) {
+            val url = try { settings.serverUrl.first() } catch (_: Exception) { "" }
+            val token = settings.getToken()
+            if (url.isNotEmpty() && !token.isNullOrEmpty()) {
+                try {
+                    val client = com.monika.dashboard.network.ReportClient(url, token)
+                    try {
+                        val res = okhttp3.Request.Builder()
+                            .url("${url}/api/current")
+                            .addHeader("Authorization", "Bearer $token")
+                            .get()
+                            .build()
+                        val response = okhttp3.OkHttpClient().newCall(res).execute()
+                        val body = response.body?.string()
+                        response.close()
+                        if (body != null) {
+                            val json = org.json.JSONObject(body)
+                            val devices = json.optJSONArray("devices")
+                            if (devices != null && devices.length() > 0) {
+                                val device = devices.getJSONObject(0)
+                                val extra = device.optJSONObject("extra")
+                                if (extra != null) {
+                                    heartRate = extra.optInt("heart_rate", 0)
+                                }
+                            }
                         }
+                    } finally {
+                        client.shutdown()
                     }
-                }
-            } catch (e: Exception) {
-                DebugLog.log("健康", "获取心率失败: ${e.message}")
+                } catch (_: Exception) {}
             }
+            delay(5000)
         }
     }
 
@@ -128,21 +129,107 @@ fun HealthScreen(settings: SettingsStore) {
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        text = if (isConnected) "已连接" else "未连接",
+                        text = if (isConnected) "已连接" else if (isScanning) "扫描中..." else "未连接",
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (isConnected) Secondary else MaterialTheme.colorScheme.error
+                        color = if (isConnected) Secondary else if (isScanning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                     )
                 }
-                OutlinedButton(
-                    onClick = {
-                        val intent = Intent(context, HeartRateService::class.java)
-                        intent.action = "START_SCAN"
-                        context.startService(intent)
-                        Toast.makeText(context, "开始扫描蓝牙设备", Toast.LENGTH_SHORT).show()
-                    },
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("扫描")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            val intent = Intent(context, HeartRateService::class.java)
+                            intent.action = "START_SCAN"
+                            context.startService(intent)
+                            isScanning = true
+                            discoveredDevices = emptyMap()
+                            Toast.makeText(context, "开始扫描蓝牙设备", Toast.LENGTH_SHORT).show()
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        enabled = !isScanning
+                    ) {
+                        Text("扫描")
+                    }
+                    if (isConnected) {
+                        OutlinedButton(
+                            onClick = {
+                                val intent = Intent(context, HeartRateService::class.java)
+                                intent.action = "STOP_SCAN"
+                                context.startService(intent)
+                                isScanning = false
+                            },
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("断开")
+                        }
+                    }
+                }
+            }
+        }
+
+        // Discovered devices list
+        if (isScanning || discoveredDevices.isNotEmpty()) {
+            Text(
+                text = "发现的设备 (${discoveredDevices.size})",
+                style = MaterialTheme.typography.titleMedium
+            )
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 200.dp)
+                    .border(1.dp, Border, RoundedCornerShape(8.dp))
+                    .padding(8.dp)
+            ) {
+                if (discoveredDevices.isEmpty()) {
+                    item {
+                        Text(
+                            text = if (isScanning) "正在扫描..." else "未发现设备",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+                } else {
+                    items(discoveredDevices.entries.toList()) { (name, device) ->
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    val intent = Intent(context, HeartRateService::class.java)
+                                    intent.action = "CONNECT"
+                                    intent.putExtra("device_address", device.address)
+                                    context.startService(intent)
+                                    connectedDeviceName = name
+                                    isScanning = false
+                                }
+                                .padding(vertical = 4.dp),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "📱",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = name,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Text(
+                                        text = device.address,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -158,7 +245,7 @@ fun HealthScreen(settings: SettingsStore) {
             while (true) {
                 logs.clear()
                 logs.addAll(DebugLog.lines)
-                kotlinx.coroutines.delay(1000)
+                delay(1000)
             }
         }
 

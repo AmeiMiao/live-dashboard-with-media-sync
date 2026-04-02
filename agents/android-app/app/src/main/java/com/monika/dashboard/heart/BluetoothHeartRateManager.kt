@@ -24,7 +24,7 @@ class BluetoothHeartRateManager(
 ) {
     companion object {
         private const val TAG = "BleHeartRate"
-        private const val SCAN_PERIOD = 10000L // 10 seconds scan timeout
+        private const val SCAN_PERIOD = 10000L
         
         // Standard BLE Heart Rate Service UUIDs
         val HEART_RATE_SERVICE_UUID = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
@@ -36,6 +36,7 @@ class BluetoothHeartRateManager(
         fun onHeartRateReceived(heartRate: Int)
         fun onConnectionStateChanged(connected: Boolean)
         fun onScanResult(device: BluetoothDevice)
+        fun onScanComplete(devices: Map<String, BluetoothDevice>)
         fun onError(message: String)
     }
 
@@ -57,25 +58,27 @@ class BluetoothHeartRateManager(
     private val handler = Handler(Looper.getMainLooper())
     private var isScanning = false
     private var connectedDevice: BluetoothDevice? = null
+    private val discoveredDevices = mutableMapOf<String, BluetoothDevice>()
 
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             try {
                 val device = result.device
-                val name = device.name ?: "Unknown"
-                Log.i(TAG, "Found device: $name (${device.address})")
+                val name = device.name
+                if (name.isNullOrBlank()) return // Skip devices without name
                 
-                // Check if this device has heart rate service
-                if (result.scanRecord?.serviceUuids?.any { it.uuid == HEART_RATE_SERVICE_UUID } == true) {
-                    Log.i(TAG, "Device has heart rate service, connecting...")
-                    stopScan()
-                    connectToDevice(device)
-                }
-                
+                val key = "$name (${device.address})"
+                discoveredDevices[key] = device
+                Log.i(TAG, "Found: $key")
                 callback.onScanResult(device)
             } catch (e: Exception) {
                 Log.e(TAG, "Error in scan result", e)
-                callback.onError("扫描结果处理失败: ${e.message}")
+            }
+        }
+
+        override fun onBatchScanResults(results: MutableList<ScanResult>?) {
+            results?.forEach { result ->
+                onScanResult(ScanCallback.SCAN_RESULT_TYPE_FULL, result)
             }
         }
 
@@ -126,7 +129,7 @@ class BluetoothHeartRateManager(
                     }
                 } else {
                     Log.e(TAG, "Heart rate service not found")
-                    callback.onError("心率服务未找到")
+                    callback.onError("心率服务未找到 - 设备可能不支持标准心率服务")
                 }
             } else {
                 Log.e(TAG, "Service discovery failed with status: $status")
@@ -182,6 +185,7 @@ class BluetoothHeartRateManager(
         }
 
         try {
+            discoveredDevices.clear()
             bluetoothLeScanner = bluetoothAdapter!!.bluetoothLeScanner
             if (bluetoothLeScanner == null) {
                 Log.e(TAG, "BLE scanner is null")
@@ -197,7 +201,6 @@ class BluetoothHeartRateManager(
             isScanning = true
             Log.i(TAG, "Started BLE scan")
             
-            // Stop scan after timeout
             handler.postDelayed({ stopScan() }, SCAN_PERIOD)
         } catch (e: SecurityException) {
             Log.e(TAG, "Security exception starting scan", e)
@@ -218,11 +221,13 @@ class BluetoothHeartRateManager(
             Log.e(TAG, "Exception stopping scan", e)
         }
         isScanning = false
-        Log.i(TAG, "Stopped BLE scan")
+        Log.i(TAG, "Stopped BLE scan, found ${discoveredDevices.size} devices")
+        callback.onScanComplete(discoveredDevices.toMap())
     }
 
     fun connectToDevice(device: BluetoothDevice) {
         try {
+            bluetoothGatt?.close()
             bluetoothGatt = device.connectGatt(context, false, gattCallback)
             Log.i(TAG, "Connecting to ${device.name ?: device.address}")
         } catch (e: SecurityException) {
@@ -273,10 +278,8 @@ class BluetoothHeartRateManager(
         val isHeartRate16Bit = (flag and 0x01) != 0
         
         return if (isHeartRate16Bit && data.size >= 3) {
-            // 16-bit heart rate value
             ((data[2].toInt() and 0xFF) shl 8) or (data[1].toInt() and 0xFF)
         } else if (data.size >= 2) {
-            // 8-bit heart rate value
             data[1].toInt() and 0xFF
         } else {
             0
@@ -285,4 +288,5 @@ class BluetoothHeartRateManager(
 
     fun isConnected(): Boolean = connectedDevice != null
     fun getConnectedDeviceName(): String? = connectedDevice?.name
+    fun getDiscoveredDevices(): Map<String, BluetoothDevice> = discoveredDevices.toMap()
 }
