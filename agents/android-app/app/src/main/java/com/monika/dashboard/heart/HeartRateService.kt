@@ -33,6 +33,8 @@ class HeartRateService : Service() {
             private set
         @Volatile var connectedDeviceName: String? = null
             private set
+        @Volatile var currentHeartRate: Int = 0
+            private set
     }
 
     private lateinit var settings: SettingsStore
@@ -146,6 +148,7 @@ class HeartRateService : Service() {
     private fun handleHeartRate(heartRate: Int) {
         if (heartRate !in 1..250) return
 
+        currentHeartRate = heartRate
         val now = System.currentTimeMillis()
         if (now - lastReportTime < MIN_REPORT_INTERVAL_MS && heartRate == lastHeartRate) {
             return

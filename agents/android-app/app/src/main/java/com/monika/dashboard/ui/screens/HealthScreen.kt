@@ -20,16 +20,15 @@ import com.monika.dashboard.data.SettingsStore
 import com.monika.dashboard.heart.HeartRateService
 import com.monika.dashboard.ui.theme.Border
 import com.monika.dashboard.ui.theme.Secondary
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
 
 @Composable
 fun HealthScreen(settings: SettingsStore) {
     val context = LocalContext.current
-    var heartRate by remember { mutableIntStateOf(0) }
     var tick by remember { mutableIntStateOf(0) }
     var bluetoothGranted by remember { mutableStateOf(false) }
 
+    // Poll Bluetooth permission and heart rate every 1 second
     LaunchedEffect(Unit) {
         while (true) {
             bluetoothGranted = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
@@ -40,55 +39,7 @@ fun HealthScreen(settings: SettingsStore) {
             } else {
                 true
             }
-
-            try {
-                val url = settings.serverUrl.first()
-                val token = settings.getToken()
-                DebugLog.log("健康", "URL: $url, Token: ${if (token.isNullOrEmpty()) "空" else "已设置"}")
-                if (url.isNotEmpty() && !token.isNullOrEmpty()) {
-                    val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        val client = com.monika.dashboard.network.ReportClient(url, token)
-                        try {
-                            val res = okhttp3.Request.Builder()
-                                .url("${url}/api/current")
-                                .addHeader("Authorization", "Bearer $token")
-                                .get()
-                                .build()
-                            val response = okhttp3.OkHttpClient().newCall(res).execute()
-                            val body = response.body?.string()
-                            response.close()
-                            Pair(response.code, body)
-                        } finally {
-                            client.shutdown()
-                        }
-                    }
-                    val (statusCode, body) = result
-                    DebugLog.log("健康", "HTTP状态: $statusCode, 响应: ${body?.take(100)}")
-                    if (body != null && statusCode == 200) {
-                        val json = org.json.JSONObject(body)
-                        val devices = json.optJSONArray("devices")
-                        DebugLog.log("健康", "设备数量: ${devices?.length() ?: 0}")
-                        if (devices != null && devices.length() > 0) {
-                            val device = devices.getJSONObject(0)
-                            val extra = device.optJSONObject("extra")
-                            if (extra != null) {
-                                heartRate = extra.optInt("heart_rate", 0)
-                                DebugLog.log("健康", "获取心率成功: $heartRate")
-                            } else {
-                                DebugLog.log("健康", "extra为空")
-                            }
-                        } else {
-                            DebugLog.log("健康", "devices为空")
-                        }
-                    }
-                } else {
-                    DebugLog.log("健康", "URL或Token为空")
-                }
-            } catch (e: Exception) {
-                DebugLog.log("健康", "获取心率失败: ${e.message ?: e.javaClass.simpleName}")
-            }
-
-            delay(3000)
+            delay(1000)
             tick++
         }
     }
@@ -96,6 +47,7 @@ fun HealthScreen(settings: SettingsStore) {
     val isConnected = HeartRateService.isConnected
     val connectedDeviceName = HeartRateService.connectedDeviceName
     val discoveredDevices = HeartRateService.discoveredDevices
+    val heartRate = HeartRateService.currentHeartRate
 
     Column(
         modifier = Modifier
