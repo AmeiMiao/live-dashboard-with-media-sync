@@ -78,7 +78,7 @@ class BluetoothHeartRateManager(
 
         override fun onBatchScanResults(results: MutableList<ScanResult>?) {
             results?.forEach { result ->
-                onScanResult(ScanCallback.SCAN_RESULT_TYPE_FULL, result)
+                onScanResult(0, result)
             }
         }
 
