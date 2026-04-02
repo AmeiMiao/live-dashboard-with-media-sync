@@ -42,7 +42,8 @@ class ReportClient(
         batteryCharging: Boolean? = null,
         musicTitle: String? = null,
         musicArtist: String? = null,
-        musicApp: String? = null
+        musicApp: String? = null,
+        heartRate: Int? = null
     ): Result<Unit> {
         val body = JSONObject().apply {
             put("app_id", appId)
@@ -52,6 +53,7 @@ class ReportClient(
             val extra = JSONObject()
             batteryPercent?.let { extra.put("battery_percent", it) }
             batteryCharging?.let { extra.put("battery_charging", it) }
+            heartRate?.let { extra.put("heart_rate", it) }
 
             if (musicTitle != null) {
                 val music = JSONObject()

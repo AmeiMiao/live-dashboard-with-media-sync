@@ -1,6 +1,7 @@
 package com.monika.dashboard
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -19,8 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.monika.dashboard.data.SettingsStore
-import com.monika.dashboard.health.HealthConnectManager
-import com.monika.dashboard.health.HealthSyncWorker
+import com.monika.dashboard.heart.HeartRateService
 import com.monika.dashboard.network.ReportClient
 import com.monika.dashboard.service.HeartbeatWorker
 import com.monika.dashboard.ui.screens.HealthScreen
@@ -41,6 +41,7 @@ class MainActivity : ComponentActivity() {
         settings = SettingsStore(applicationContext)
         enableEdgeToEdge()
         requestNotificationPermission()
+        requestBluetoothPermissions()
 
         setContent {
             DashboardTheme {
@@ -66,6 +67,25 @@ class MainActivity : ComponentActivity() {
                     1001
                 )
             }
+        }
+    }
+
+    private fun requestBluetoothPermissions() {
+        val permissions = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            permissions.add(Manifest.permission.BLUETOOTH_SCAN)
+            permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            permissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+
+        val notGranted = permissions.filter {
+            checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (notGranted.isNotEmpty()) {
+            ActivityCompat.requestPermissions(this, notGranted.toTypedArray(), 1002)
         }
     }
 }
@@ -122,25 +142,15 @@ private fun MainContent(settings: SettingsStore, modifier: Modifier = Modifier) 
     val tabs = listOf("设置", "健康", "状态")
     val context = LocalContext.current
 
-    // Trigger foreground health sync, schedule background sync, and start heartbeat on app open
+    // Start heartbeat on app open
     LaunchedEffect(Unit) {
-        val enabledTypes = settings.enabledHealthTypes.first()
         val url = settings.serverUrl.first()
         val token = withContext(Dispatchers.IO) { settings.getToken() }
         val monitoringEnabled = settings.monitoringEnabled.first()
         val reportInterval = settings.reportInterval.first()
 
-        if (url.isNotEmpty() && !token.isNullOrEmpty()) {
-            // Schedule heartbeat if monitoring is enabled
-            if (monitoringEnabled) {
-                HeartbeatWorker.schedule(context, reportInterval)
-            }
-
-            // Schedule health sync if health types are configured
-            if (enabledTypes.isNotEmpty() && HealthConnectManager.isAvailable(context)) {
-                val syncInterval = settings.healthSyncInterval.first()
-                HealthSyncWorker.schedule(context, syncInterval)
-            }
+        if (url.isNotEmpty() && !token.isNullOrEmpty() && monitoringEnabled) {
+            HeartbeatWorker.schedule(context, reportInterval)
         }
     }
 
