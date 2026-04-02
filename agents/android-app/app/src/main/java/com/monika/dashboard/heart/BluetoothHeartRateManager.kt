@@ -303,4 +303,8 @@ class BluetoothHeartRateManager(
     }
 
     fun isConnected(): Boolean = connectedDevice != null
+    fun getConnectedDeviceName(): String? {
+        val device = connectedDevice ?: return null
+        return try { device.name } catch (_: SecurityException) { device.address }
+    }
 }
