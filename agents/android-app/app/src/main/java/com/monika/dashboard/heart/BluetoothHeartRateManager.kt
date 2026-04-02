@@ -307,4 +307,13 @@ class BluetoothHeartRateManager(
         val device = connectedDevice ?: return null
         return try { device.name } catch (_: SecurityException) { device.address }
     }
+
+    fun getRemoteDevice(address: String): BluetoothDevice? {
+        return try {
+            bluetoothAdapter?.getRemoteDevice(address)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get remote device: $address", e)
+            null
+        }
+    }
 }

@@ -114,11 +114,19 @@ class HeartRateService : Service() {
             Log.e(TAG, "Failed to start foreground", e)
         }
 
-        // Try to reconnect to saved device on service start
+        // Try to reconnect directly to saved device (faster than scanning)
         val savedAddress = getSavedDeviceAddress()
         if (savedAddress != null && !isConnected && heartRateManager.isBluetoothEnabled()) {
-            DebugLog.log("心率", "服务启动，尝试重连已保存设备")
-            startScan()
+            DebugLog.log("心率", "服务启动，尝试直接连接已保存设备: $savedAddress")
+            try {
+                val device = heartRateManager.getRemoteDevice(savedAddress)
+                if (device != null) {
+                    connectToDevice(device)
+                }
+            } catch (e: Exception) {
+                DebugLog.log("心率", "直接连接失败，开始扫描: ${e.message}")
+                startScan()
+            }
         }
     }
 
