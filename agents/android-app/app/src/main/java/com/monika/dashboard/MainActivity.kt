@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.monika.dashboard.data.SettingsStore
 import com.monika.dashboard.heart.HeartRateService
+import com.monika.dashboard.heart.HeartRateWorker
 import com.monika.dashboard.network.ReportClient
 import com.monika.dashboard.service.HeartbeatWorker
 import com.monika.dashboard.ui.screens.HealthScreen
@@ -142,7 +143,7 @@ private fun MainContent(settings: SettingsStore, modifier: Modifier = Modifier) 
     val tabs = listOf("设置", "健康", "状态")
     val context = LocalContext.current
 
-    // Start heartbeat on app open
+    // Start heartbeat and heart rate keepalive on app open
     LaunchedEffect(Unit) {
         val url = settings.serverUrl.first()
         val token = withContext(Dispatchers.IO) { settings.getToken() }
@@ -152,6 +153,9 @@ private fun MainContent(settings: SettingsStore, modifier: Modifier = Modifier) 
         if (url.isNotEmpty() && !token.isNullOrEmpty() && monitoringEnabled) {
             HeartbeatWorker.schedule(context, reportInterval)
         }
+
+        // Start heart rate keepalive
+        HeartRateWorker.schedule(context)
     }
 
     Column(modifier = modifier.fillMaxSize()) {
