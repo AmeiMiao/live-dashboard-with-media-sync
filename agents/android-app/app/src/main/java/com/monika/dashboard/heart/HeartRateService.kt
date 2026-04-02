@@ -28,11 +28,6 @@ class HeartRateService : Service() {
         private const val MIN_REPORT_INTERVAL_MS = 30000L // 30 seconds
     }
 
-    inner class LocalBinder : Binder() {
-        fun getService(): HeartRateService = this@HeartRateService
-    }
-
-    private val binder = LocalBinder()
     private lateinit var settings: SettingsStore
     private lateinit var heartRateManager: BluetoothHeartRateManager
     private val executor = Executors.newSingleThreadExecutor()
@@ -77,7 +72,7 @@ class HeartRateService : Service() {
         return START_STICKY
     }
 
-    override fun onBind(intent: Intent?): IBinder = binder
+    override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
         heartRateManager.disconnect()
@@ -85,6 +80,15 @@ class HeartRateService : Service() {
     }
 
     fun startScan() {
+        // Check Bluetooth permission
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (checkSelfPermission(android.Manifest.permission.BLUETOOTH_SCAN) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                DebugLog.log("心率", "蓝牙扫描权限未授予")
+                Toast.makeText(this, "请授予蓝牙权限", Toast.LENGTH_SHORT).show()
+                return
+            }
+        }
+        
         if (!heartRateManager.isBluetoothEnabled()) {
             DebugLog.log("心率", "蓝牙未开启")
             Toast.makeText(this, "请先开启蓝牙", Toast.LENGTH_SHORT).show()
@@ -104,12 +108,8 @@ class HeartRateService : Service() {
         heartRateManager.stopScan()
     }
 
-    fun isConnected(): Boolean = heartRateManager.isConnected()
-
-    fun getConnectedDeviceName(): String? = heartRateManager.getConnectedDeviceName()
-
     private fun handleHeartRate(heartRate: Int) {
-        if (heartRate <= 0 || heartRate > 250) return
+        if (heartRate !in 1..250) return
 
         val now = System.currentTimeMillis()
         if (now - lastReportTime < MIN_REPORT_INTERVAL_MS && heartRate == lastHeartRate) {
@@ -157,18 +157,16 @@ class HeartRateService : Service() {
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "心率监测",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Live Dashboard 心率监测服务"
-                setShowBadge(false)
-            }
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            "心率监测",
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = "Live Dashboard 心率监测服务"
+            setShowBadge(false)
         }
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(channel)
     }
 
     private fun createNotification(connected: Boolean, heartRate: Int? = null): Notification {
