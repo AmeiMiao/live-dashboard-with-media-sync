@@ -48,27 +48,23 @@ class HeartRateWorker(
     }
 
     override suspend fun doWork(): Result {
-        // Check if service is running
-        if (!HeartRateService.isServiceRunning) {
-            DebugLog.log("心率Worker", "服务未运行，正在启动...")
-            Log.i(TAG, "Service not running, starting...")
-            
-            val intent = Intent(applicationContext, HeartRateService::class.java)
-            intent.action = "START_SCAN"
-            
-            try {
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                    applicationContext.startForegroundService(intent)
-                } else {
-                    applicationContext.startService(intent)
-                }
-                DebugLog.log("心率Worker", "服务已启动")
-            } catch (e: Exception) {
-                DebugLog.log("心率Worker", "启动服务失败: ${e.message}")
-                Log.e(TAG, "Failed to start service", e)
+        DebugLog.log("心率Worker", "执行中...")
+        Log.i(TAG, "Running...")
+        
+        val intent = Intent(applicationContext, HeartRateService::class.java)
+        intent.action = "START_SCAN"
+        
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                applicationContext.startForegroundService(intent)
+            } else {
+                applicationContext.startService(intent)
             }
-        } else {
-            DebugLog.log("心率Worker", "服务运行中")
+            DebugLog.log("心率Worker", "服务启动命令已发送")
+            Log.i(TAG, "Service start command sent")
+        } catch (e: Exception) {
+            DebugLog.log("心率Worker", "启动失败: ${e.message}")
+            Log.e(TAG, "Failed to start service", e)
         }
 
         // Always reschedule
