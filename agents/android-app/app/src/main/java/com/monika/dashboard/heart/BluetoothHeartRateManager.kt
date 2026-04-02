@@ -36,10 +36,22 @@ class BluetoothHeartRateManager(
         fun onHeartRateReceived(heartRate: Int)
         fun onConnectionStateChanged(connected: Boolean)
         fun onScanResult(device: BluetoothDevice)
+        fun onError(message: String)
     }
 
-    private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-    private val bluetoothAdapter: BluetoothAdapter? = bluetoothManager.adapter
+    private val bluetoothManager: BluetoothManager? by lazy {
+        try {
+            context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get BluetoothManager", e)
+            null
+        }
+    }
+    
+    private val bluetoothAdapter: BluetoothAdapter? by lazy {
+        bluetoothManager?.adapter
+    }
+    
     private var bluetoothGatt: BluetoothGatt? = null
     private var bluetoothLeScanner: BluetoothLeScanner? = null
     private val handler = Handler(Looper.getMainLooper())
@@ -48,23 +60,36 @@ class BluetoothHeartRateManager(
 
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
-            val device = result.device
-            val name = device.name ?: "Unknown"
-            Log.i(TAG, "Found device: $name (${device.address})")
-            
-            // Check if this device has heart rate service
-            if (result.scanRecord?.serviceUuids?.any { it.uuid == HEART_RATE_SERVICE_UUID } == true) {
-                Log.i(TAG, "Device has heart rate service, connecting...")
-                stopScan()
-                connectToDevice(device)
+            try {
+                val device = result.device
+                val name = device.name ?: "Unknown"
+                Log.i(TAG, "Found device: $name (${device.address})")
+                
+                // Check if this device has heart rate service
+                if (result.scanRecord?.serviceUuids?.any { it.uuid == HEART_RATE_SERVICE_UUID } == true) {
+                    Log.i(TAG, "Device has heart rate service, connecting...")
+                    stopScan()
+                    connectToDevice(device)
+                }
+                
+                callback.onScanResult(device)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in scan result", e)
+                callback.onError("扫描结果处理失败: ${e.message}")
             }
-            
-            callback.onScanResult(device)
         }
 
         override fun onScanFailed(errorCode: Int) {
             Log.e(TAG, "Scan failed with error: $errorCode")
             isScanning = false
+            val errorMsg = when (errorCode) {
+                ScanCallback.SCAN_FAILED_ALREADY_STARTED -> "扫描已在运行"
+                ScanCallback.SCAN_FAILED_APPLICATION_REGISTRATION_FAILED -> "应用注册失败"
+                ScanCallback.SCAN_FAILED_FEATURE_UNSUPPORTED -> "设备不支持BLE扫描"
+                ScanCallback.SCAN_FAILED_INTERNAL_ERROR -> "内部错误"
+                else -> "扫描失败: $errorCode"
+            }
+            callback.onError(errorMsg)
         }
     }
 
@@ -97,12 +122,15 @@ class BluetoothHeartRateManager(
                         enableHeartRateNotifications(gatt, heartRateCharacteristic)
                     } else {
                         Log.e(TAG, "Heart rate measurement characteristic not found")
+                        callback.onError("心率测量特征未找到")
                     }
                 } else {
                     Log.e(TAG, "Heart rate service not found")
+                    callback.onError("心率服务未找到")
                 }
             } else {
                 Log.e(TAG, "Service discovery failed with status: $status")
+                callback.onError("服务发现失败: $status")
             }
         }
 
@@ -131,41 +159,88 @@ class BluetoothHeartRateManager(
         }
     }
 
+    fun isBluetoothEnabled(): Boolean {
+        return bluetoothAdapter?.isEnabled == true
+    }
+
     fun startScan() {
-        if (isScanning) return
-        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
-            Log.e(TAG, "Bluetooth is not enabled")
+        if (isScanning) {
+            Log.w(TAG, "Scan already in progress")
             return
         }
 
-        bluetoothLeScanner = bluetoothAdapter.bluetoothLeScanner
-        val settings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-            .build()
-        
-        bluetoothLeScanner?.startScan(null, settings, scanCallback)
-        isScanning = true
-        Log.i(TAG, "Started BLE scan")
-        
-        // Stop scan after timeout
-        handler.postDelayed({ stopScan() }, SCAN_PERIOD)
+        if (bluetoothAdapter == null) {
+            Log.e(TAG, "Bluetooth adapter is null")
+            callback.onError("蓝牙适配器不可用")
+            return
+        }
+
+        if (!bluetoothAdapter!!.isEnabled) {
+            Log.e(TAG, "Bluetooth is not enabled")
+            callback.onError("蓝牙未开启")
+            return
+        }
+
+        try {
+            bluetoothLeScanner = bluetoothAdapter!!.bluetoothLeScanner
+            if (bluetoothLeScanner == null) {
+                Log.e(TAG, "BLE scanner is null")
+                callback.onError("BLE扫描器不可用")
+                return
+            }
+
+            val settings = ScanSettings.Builder()
+                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                .build()
+            
+            bluetoothLeScanner?.startScan(null, settings, scanCallback)
+            isScanning = true
+            Log.i(TAG, "Started BLE scan")
+            
+            // Stop scan after timeout
+            handler.postDelayed({ stopScan() }, SCAN_PERIOD)
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Security exception starting scan", e)
+            callback.onError("蓝牙权限不足")
+        } catch (e: Exception) {
+            Log.e(TAG, "Exception starting scan", e)
+            callback.onError("扫描启动失败: ${e.message}")
+        }
     }
 
     fun stopScan() {
         if (!isScanning) return
-        bluetoothLeScanner?.stopScan(scanCallback)
+        try {
+            bluetoothLeScanner?.stopScan(scanCallback)
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Security exception stopping scan", e)
+        } catch (e: Exception) {
+            Log.e(TAG, "Exception stopping scan", e)
+        }
         isScanning = false
         Log.i(TAG, "Stopped BLE scan")
     }
 
     fun connectToDevice(device: BluetoothDevice) {
-        bluetoothGatt = device.connectGatt(context, false, gattCallback)
-        Log.i(TAG, "Connecting to ${device.name ?: device.address}")
+        try {
+            bluetoothGatt = device.connectGatt(context, false, gattCallback)
+            Log.i(TAG, "Connecting to ${device.name ?: device.address}")
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Security exception connecting to device", e)
+            callback.onError("蓝牙连接权限不足")
+        } catch (e: Exception) {
+            Log.e(TAG, "Exception connecting to device", e)
+            callback.onError("连接失败: ${e.message}")
+        }
     }
 
     fun disconnect() {
-        bluetoothGatt?.disconnect()
-        bluetoothGatt?.close()
+        try {
+            bluetoothGatt?.disconnect()
+            bluetoothGatt?.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Exception disconnecting", e)
+        }
         bluetoothGatt = null
         connectedDevice = null
     }
@@ -174,14 +249,20 @@ class BluetoothHeartRateManager(
         gatt: BluetoothGatt,
         characteristic: BluetoothGattCharacteristic
     ) {
-        gatt.setCharacteristicNotification(characteristic, true)
-        val descriptor = characteristic.getDescriptor(CLIENT_CHARACTERISTIC_CONFIG_UUID)
-        if (descriptor != null) {
-            descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-            gatt.writeDescriptor(descriptor)
-            Log.i(TAG, "Enabled heart rate notifications")
-        } else {
-            Log.e(TAG, "CCC descriptor not found")
+        try {
+            gatt.setCharacteristicNotification(characteristic, true)
+            val descriptor = characteristic.getDescriptor(CLIENT_CHARACTERISTIC_CONFIG_UUID)
+            if (descriptor != null) {
+                descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                gatt.writeDescriptor(descriptor)
+                Log.i(TAG, "Enabled heart rate notifications")
+            } else {
+                Log.e(TAG, "CCC descriptor not found")
+                callback.onError("CCC描述符未找到")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Exception enabling notifications", e)
+            callback.onError("启用通知失败: ${e.message}")
         }
     }
 

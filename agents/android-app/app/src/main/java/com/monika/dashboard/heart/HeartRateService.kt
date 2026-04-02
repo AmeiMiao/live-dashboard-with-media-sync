@@ -10,6 +10,7 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.monika.dashboard.R
 import com.monika.dashboard.data.DebugLog
@@ -54,6 +55,11 @@ class HeartRateService : Service() {
             override fun onScanResult(device: BluetoothDevice) {
                 DebugLog.log("心率", "发现设备: ${device.name ?: device.address}")
             }
+
+            override fun onError(message: String) {
+                DebugLog.log("心率", "错误: $message")
+                Log.e(TAG, "Error: $message")
+            }
         })
 
         createNotificationChannel()
@@ -79,8 +85,19 @@ class HeartRateService : Service() {
     }
 
     fun startScan() {
-        heartRateManager.startScan()
-        DebugLog.log("心率", "开始扫描蓝牙设备")
+        if (!heartRateManager.isBluetoothEnabled()) {
+            DebugLog.log("心率", "蓝牙未开启")
+            Toast.makeText(this, "请先开启蓝牙", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        try {
+            heartRateManager.startScan()
+            DebugLog.log("心率", "开始扫描蓝牙设备")
+        } catch (e: Exception) {
+            DebugLog.log("心率", "扫描失败: ${e.message}")
+            Toast.makeText(this, "扫描失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
     }
 
     fun stopScan() {
