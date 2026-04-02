@@ -26,10 +26,9 @@ class BluetoothHeartRateManager(
         private const val TAG = "BleHeartRate"
         private const val SCAN_PERIOD = 10000L
         
-        // Standard BLE Heart Rate Service UUIDs
-        val HEART_RATE_SERVICE_UUID = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
-        val HEART_RATE_MEASUREMENT_UUID = UUID.fromString("00002a37-0000-1000-8000-00805f9b34fb")
-        val CLIENT_CHARACTERISTIC_CONFIG_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+        val HEART_RATE_SERVICE_UUID: UUID = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
+        val HEART_RATE_MEASUREMENT_UUID: UUID = UUID.fromString("00002a37-0000-1000-8000-00805f9b34fb")
+        val CLIENT_CHARACTERISTIC_CONFIG_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
     }
 
     interface HeartRateCallback {
@@ -86,10 +85,10 @@ class BluetoothHeartRateManager(
             Log.e(TAG, "Scan failed with error: $errorCode")
             isScanning = false
             val errorMsg = when (errorCode) {
-                ScanCallback.SCAN_FAILED_ALREADY_STARTED -> "扫描已在运行"
-                ScanCallback.SCAN_FAILED_APPLICATION_REGISTRATION_FAILED -> "应用注册失败"
-                ScanCallback.SCAN_FAILED_FEATURE_UNSUPPORTED -> "设备不支持BLE扫描"
-                ScanCallback.SCAN_FAILED_INTERNAL_ERROR -> "内部错误"
+                SCAN_FAILED_ALREADY_STARTED -> "扫描已在运行"
+                SCAN_FAILED_APPLICATION_REGISTRATION_FAILED -> "应用注册失败"
+                SCAN_FAILED_FEATURE_UNSUPPORTED -> "设备不支持BLE扫描"
+                SCAN_FAILED_INTERNAL_ERROR -> "内部错误"
                 else -> "扫描失败: $errorCode"
             }
             callback.onError(errorMsg)
@@ -150,6 +149,15 @@ class BluetoothHeartRateManager(
                 Log.i(TAG, "Heart rate: $heartRate")
                 callback.onHeartRateReceived(heartRate)
             }
+        }
+
+        @Deprecated("Deprecated in Java")
+        override fun onCharacteristicChanged(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic
+        ) {
+            val value = characteristic.value ?: return
+            onCharacteristicChanged(gatt, characteristic, value)
         }
 
         override fun onDescriptorWrite(
@@ -263,6 +271,7 @@ class BluetoothHeartRateManager(
             val descriptor = characteristic.getDescriptor(CLIENT_CHARACTERISTIC_CONFIG_UUID)
             if (descriptor != null) {
                 descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                @Suppress("DEPRECATION")
                 try { gatt.writeDescriptor(descriptor) } catch (_: SecurityException) {
                     Log.e(TAG, "Security exception writing descriptor")
                     callback.onError("写入描述符权限不足")
@@ -294,9 +303,4 @@ class BluetoothHeartRateManager(
     }
 
     fun isConnected(): Boolean = connectedDevice != null
-    fun getConnectedDeviceName(): String? {
-        val device = connectedDevice ?: return null
-        return try { device.name } catch (_: SecurityException) { device.address }
-    }
-    fun getDiscoveredDevices(): Map<String, BluetoothDevice> = discoveredDevices.toMap()
 }
