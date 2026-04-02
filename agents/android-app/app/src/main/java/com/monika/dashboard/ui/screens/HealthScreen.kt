@@ -44,6 +44,7 @@ fun HealthScreen(settings: SettingsStore) {
             try {
                 val url = settings.serverUrl.first()
                 val token = settings.getToken()
+                DebugLog.log("健康", "URL: $url, Token: ${if (token.isNullOrEmpty()) "空" else "已设置"}")
                 if (url.isNotEmpty() && !token.isNullOrEmpty()) {
                     val client = com.monika.dashboard.network.ReportClient(url, token)
                     try {
@@ -55,23 +56,32 @@ fun HealthScreen(settings: SettingsStore) {
                         val response = okhttp3.OkHttpClient().newCall(res).execute()
                         val body = response.body?.string()
                         response.close()
-                        if (body != null) {
+                        DebugLog.log("健康", "HTTP状态: ${response.code}, 响应: ${body?.take(100)}")
+                        if (body != null && response.isSuccessful) {
                             val json = org.json.JSONObject(body)
                             val devices = json.optJSONArray("devices")
+                            DebugLog.log("健康", "设备数量: ${devices?.length() ?: 0}")
                             if (devices != null && devices.length() > 0) {
                                 val device = devices.getJSONObject(0)
                                 val extra = device.optJSONObject("extra")
                                 if (extra != null) {
                                     heartRate = extra.optInt("heart_rate", 0)
+                                    DebugLog.log("健康", "获取心率成功: $heartRate")
+                                } else {
+                                    DebugLog.log("健康", "extra为空")
                                 }
+                            } else {
+                                DebugLog.log("健康", "devices为空")
                             }
                         }
                     } finally {
                         client.shutdown()
                     }
+                } else {
+                    DebugLog.log("健康", "URL或Token为空")
                 }
             } catch (e: Exception) {
-                DebugLog.log("健康", "获取心率失败: ${e.message}")
+                DebugLog.log("健康", "获取心率失败: ${e.message ?: e.javaClass.simpleName}")
             }
 
             delay(3000)
