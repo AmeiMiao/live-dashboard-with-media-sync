@@ -64,8 +64,8 @@ class BluetoothHeartRateManager(
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             try {
                 val device = result.device
-                val name = device.name
-                if (name.isNullOrBlank()) return // Skip devices without name
+                val name = try { device.name } catch (_: SecurityException) { null }
+                if (name.isNullOrBlank()) return
                 
                 val key = "$name (${device.address})"
                 discoveredDevices[key] = device
@@ -103,13 +103,16 @@ class BluetoothHeartRateManager(
                     Log.i(TAG, "Connected to GATT server")
                     connectedDevice = gatt.device
                     callback.onConnectionStateChanged(true)
-                    gatt.discoverServices()
+                    try { gatt.discoverServices() } catch (e: SecurityException) {
+                        Log.e(TAG, "Security exception discovering services", e)
+                        callback.onError("服务发现权限不足")
+                    }
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     Log.i(TAG, "Disconnected from GATT server")
                     connectedDevice = null
                     callback.onConnectionStateChanged(false)
-                    bluetoothGatt?.close()
+                    try { bluetoothGatt?.close() } catch (_: SecurityException) {}
                     bluetoothGatt = null
                 }
             }
@@ -243,10 +246,10 @@ class BluetoothHeartRateManager(
     fun disconnect() {
         try {
             bluetoothGatt?.disconnect()
+        } catch (_: SecurityException) {}
+        try {
             bluetoothGatt?.close()
-        } catch (e: Exception) {
-            Log.e(TAG, "Exception disconnecting", e)
-        }
+        } catch (_: SecurityException) {}
         bluetoothGatt = null
         connectedDevice = null
     }
@@ -256,11 +259,14 @@ class BluetoothHeartRateManager(
         characteristic: BluetoothGattCharacteristic
     ) {
         try {
-            gatt.setCharacteristicNotification(characteristic, true)
+            try { gatt.setCharacteristicNotification(characteristic, true) } catch (_: SecurityException) {}
             val descriptor = characteristic.getDescriptor(CLIENT_CHARACTERISTIC_CONFIG_UUID)
             if (descriptor != null) {
                 descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                gatt.writeDescriptor(descriptor)
+                try { gatt.writeDescriptor(descriptor) } catch (_: SecurityException) {
+                    Log.e(TAG, "Security exception writing descriptor")
+                    callback.onError("写入描述符权限不足")
+                }
                 Log.i(TAG, "Enabled heart rate notifications")
             } else {
                 Log.e(TAG, "CCC descriptor not found")
