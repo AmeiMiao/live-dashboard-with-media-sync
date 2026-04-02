@@ -128,14 +128,6 @@ class SettingsStore(private val context: Context) {
         return prefs.edit().putString("token", token).commit()
     }
 
-    fun getHeartRateReportInterval(): Int {
-        return try {
-            val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
-            prefs.getInt("heart_rate_report_interval", 30)
-        } catch (_: Exception) {
-            30
-        }
-    }
 
     companion object {
         fun maskToken(token: String): String {
