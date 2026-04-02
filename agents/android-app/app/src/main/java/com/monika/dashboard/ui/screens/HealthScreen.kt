@@ -44,6 +44,49 @@ fun HealthScreen(settings: SettingsStore) {
         }
     }
 
+    // Poll heart rate from server every 3 seconds
+    LaunchedEffect(Unit) {
+        while (true) {
+            try {
+                val url = settings.serverUrl.first()
+                val token = settings.getToken()
+                if (url.isNotEmpty() && !token.isNullOrEmpty()) {
+                    val client = com.monika.dashboard.network.ReportClient(url, token)
+                    try {
+                        val res = okhttp3.Request.Builder()
+                            .url("${url}/api/current")
+                            .addHeader("Authorization", "Bearer $token")
+                            .get()
+                            .build()
+                        val response = okhttp3.OkHttpClient().newCall(res).execute()
+                        val body = response.body?.string()
+                        response.close()
+                        if (body != null) {
+                            val json = org.json.JSONObject(body)
+                            val devices = json.optJSONArray("devices")
+                            if (devices != null && devices.length() > 0) {
+                                val device = devices.getJSONObject(0)
+                                val extra = device.optJSONObject("extra")
+                                if (extra != null) {
+                                    heartRate = extra.optInt("heart_rate", 0)
+                                }
+                            }
+                        }
+                    } finally {
+                        client.shutdown()
+                    }
+                }
+            } catch (e: Exception) {
+                DebugLog.log("健康", "获取心率失败: ${e.message}")
+            }
+            delay(3000)
+            tick++
+        }
+    }
+            delay(2000)
+        }
+    }
+
     // Poll heart rate from server
     LaunchedEffect(Unit) {
         while (true) {
@@ -150,7 +193,6 @@ fun HealthScreen(settings: SettingsStore) {
                         color = if (isConnected) Secondary else MaterialTheme.colorScheme.error
                     )
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
                         onClick = {
                             if (!bluetoothGranted) {
@@ -159,7 +201,11 @@ fun HealthScreen(settings: SettingsStore) {
                             }
                             val intent = Intent(context, HeartRateService::class.java)
                             intent.action = "START_SCAN"
-                            context.startService(intent)
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                context.startForegroundService(intent)
+                            } else {
+                                context.startService(intent)
+                            }
                             Toast.makeText(context, "开始扫描蓝牙设备", Toast.LENGTH_SHORT).show()
                         },
                         shape = RoundedCornerShape(8.dp),
@@ -198,18 +244,22 @@ fun HealthScreen(settings: SettingsStore) {
                     .padding(8.dp)
             ) {
                 items(discoveredDevices.entries.toList()) { (name, device) ->
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                val intent = Intent(context, HeartRateService::class.java)
-                                intent.action = "CONNECT"
-                                intent.putExtra("device_address", device.address)
-                                context.startService(intent)
-                            }
-                            .padding(vertical = 4.dp),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    val intent = Intent(context, HeartRateService::class.java)
+                                    intent.action = "CONNECT"
+                                    intent.putExtra("device_address", device.address)
+                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                        context.startForegroundService(intent)
+                                    } else {
+                                        context.startService(intent)
+                                    }
+                                }
+                                .padding(vertical = 4.dp),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
