@@ -229,7 +229,8 @@ class BluetoothHeartRateManager(
         try {
             bluetoothGatt?.close()
             bluetoothGatt = device.connectGatt(context, false, gattCallback)
-            Log.i(TAG, "Connecting to ${device.name ?: device.address}")
+            val deviceName = try { device.name ?: device.address } catch (_: SecurityException) { device.address }
+            Log.i(TAG, "Connecting to $deviceName")
         } catch (e: SecurityException) {
             Log.e(TAG, "Security exception connecting to device", e)
             callback.onError("蓝牙连接权限不足")
@@ -287,6 +288,9 @@ class BluetoothHeartRateManager(
     }
 
     fun isConnected(): Boolean = connectedDevice != null
-    fun getConnectedDeviceName(): String? = connectedDevice?.name
+    fun getConnectedDeviceName(): String? {
+        val device = connectedDevice ?: return null
+        return try { device.name } catch (_: SecurityException) { device.address }
+    }
     fun getDiscoveredDevices(): Map<String, BluetoothDevice> = discoveredDevices.toMap()
 }
