@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.edit
 import com.monika.dashboard.R
 import com.monika.dashboard.data.DebugLog
 import com.monika.dashboard.data.SettingsStore
@@ -23,7 +24,6 @@ class HeartRateService : Service() {
         private const val TAG = "HeartRateService"
         private const val CHANNEL_ID = "heart_rate_channel"
         private const val NOTIFICATION_ID = 1002
-        private const val MIN_REPORT_INTERVAL_MS = 30000L
         private const val PREFS_NAME = "heart_rate_prefs"
         private const val KEY_DEVICE_ADDRESS = "last_connected_device_address"
         
@@ -48,7 +48,7 @@ class HeartRateService : Service() {
     private fun getPrefs() = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
 
     private fun saveDeviceAddress(address: String?) {
-        getPrefs().edit().putString(KEY_DEVICE_ADDRESS, address).apply()
+        getPrefs().edit { putString(KEY_DEVICE_ADDRESS, address) }
     }
 
     private fun getSavedDeviceAddress(): String? {
@@ -197,17 +197,11 @@ class HeartRateService : Service() {
         DebugLog.log("心率", "已清除保存设备")
     }
 
-    fun getSavedDeviceAddressPublic(): String? = getSavedDeviceAddress()
-
     fun connectToDevice(device: BluetoothDevice) {
         heartRateManager.connectToDevice(device)
         val deviceName = try { device.name ?: device.address } catch (_: SecurityException) { device.address }
         DebugLog.log("心率", "正在连接: $deviceName")
     }
-
-    fun isScanning(): Boolean = !heartRateManager.isConnected()
-
-    fun getHeartRateManager(): BluetoothHeartRateManager = heartRateManager
 
     private fun handleHeartRate(heartRate: Int) {
         if (heartRate !in 1..250) return
