@@ -6,6 +6,8 @@ import android.widget.Toast
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -61,6 +63,7 @@ fun HealthScreen(settings: SettingsStore) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -215,7 +218,7 @@ fun HealthScreen(settings: SettingsStore) {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 200.dp)
+                    .heightIn(min = 120.dp, max = 220.dp)
                     .border(1.dp, Border, RoundedCornerShape(8.dp))
                     .padding(8.dp)
             ) {
@@ -284,8 +287,7 @@ fun HealthScreen(settings: SettingsStore) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
-                .border(1.dp, Border, RoundedCornerShape(8.dp))
+                                .border(1.dp, Border, RoundedCornerShape(8.dp))
                 .padding(8.dp)
         ) {
             items(logs) { line ->
