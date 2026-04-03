@@ -209,7 +209,7 @@ class HeartRateService : Service() {
         currentHeartRate = heartRate
         val now = System.currentTimeMillis()
         val interval = try { runBlocking { settings.heartRateReportInterval.first() } * 1000L } catch (_: Exception) { 30000L }
-        if (now - lastReportTime < interval && heartRate == lastHeartRate) {
+        if (now - lastReportTime < interval) {
             return
         }
 
