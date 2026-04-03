@@ -287,7 +287,8 @@ fun HealthScreen(settings: SettingsStore) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                                .border(1.dp, Border, RoundedCornerShape(8.dp))
+                .heightIn(min = 180.dp, max = 260.dp)
+                .border(1.dp, Border, RoundedCornerShape(8.dp))
                 .padding(8.dp)
         ) {
             items(logs) { line ->

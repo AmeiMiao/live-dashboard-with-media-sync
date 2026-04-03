@@ -37,6 +37,8 @@ class HeartRateService : Service() {
             private set
         @Volatile var currentHeartRate: Int = 0
             private set
+        @Volatile var lastHeartRateReportTime: Long = 0L
+            private set
     }
 
     private lateinit var settings: SettingsStore
@@ -189,6 +191,10 @@ class HeartRateService : Service() {
         isConnected = false
         connectedDeviceName = null
         currentHeartRate = 0
+        try {
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.notify(NOTIFICATION_ID, createNotification(false))
+        } catch (_: Exception) {}
         DebugLog.log("心率", "手动断开当前设备")
     }
 
@@ -215,6 +221,7 @@ class HeartRateService : Service() {
 
         lastReportTime = now
         lastHeartRate = heartRate
+        lastHeartRateReportTime = now
         executor.execute { reportHeartRate(heartRate) }
     }
 
