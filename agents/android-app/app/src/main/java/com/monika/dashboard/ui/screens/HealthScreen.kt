@@ -133,11 +133,7 @@ fun HealthScreen(settings: SettingsStore) {
                             }
                             val intent = Intent(context, HeartRateService::class.java)
                             intent.action = "START_SCAN"
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                context.startForegroundService(intent)
-                            } else {
-                                context.startService(intent)
-                            }
+                            context.startForegroundService(intent)
                             Toast.makeText(context, "开始扫描蓝牙设备", Toast.LENGTH_SHORT).show()
                         },
                         shape = RoundedCornerShape(8.dp),
@@ -184,11 +180,7 @@ fun HealthScreen(settings: SettingsStore) {
                                 val intent = Intent(context, HeartRateService::class.java)
                                 intent.action = "CONNECT"
                                 intent.putExtra("device_address", savedDeviceAddress)
-                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                    context.startForegroundService(intent)
-                                } else {
-                                    context.startService(intent)
-                                }
+                                context.startForegroundService(intent)
                             }
                         ) { Text("重连") }
                     }
