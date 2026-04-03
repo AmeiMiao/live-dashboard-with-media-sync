@@ -149,7 +149,7 @@ fun HealthScreen(settings: SettingsStore) {
                         OutlinedButton(
                             onClick = {
                                 val intent = Intent(context, HeartRateService::class.java)
-                                intent.action = "STOP_SCAN"
+                                intent.action = "DISCONNECT"
                                 context.startService(intent)
                             },
                             shape = RoundedCornerShape(8.dp)
