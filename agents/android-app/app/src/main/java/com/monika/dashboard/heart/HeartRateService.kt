@@ -201,7 +201,8 @@ class HeartRateService : Service() {
 
     fun connectToDevice(device: BluetoothDevice) {
         heartRateManager.connectToDevice(device)
-        DebugLog.log("心率", "正在连接: ${device.name ?: device.address}")
+        val deviceName = try { device.name ?: device.address } catch (_: SecurityException) { device.address }
+        DebugLog.log("心率", "正在连接: $deviceName")
     }
 
     fun isScanning(): Boolean = !heartRateManager.isConnected()
