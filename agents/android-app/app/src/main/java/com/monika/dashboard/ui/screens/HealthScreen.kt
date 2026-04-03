@@ -49,6 +49,14 @@ fun HealthScreen(settings: SettingsStore) {
     val connectedDeviceName = HeartRateService.connectedDeviceName
     val discoveredDevices = HeartRateService.discoveredDevices
     val heartRate = HeartRateService.currentHeartRate
+    val savedDeviceAddress = remember(tick) {
+        try {
+            val prefs = context.getSharedPreferences("heart_rate_prefs", android.content.Context.MODE_PRIVATE)
+            prefs.getString("last_connected_device_address", null)
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -153,9 +161,63 @@ fun HealthScreen(settings: SettingsStore) {
             }
         }
 
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, Border, RoundedCornerShape(8.dp)),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(text = "已保存设备", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = savedDeviceAddress ?: "暂无已保存设备",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (savedDeviceAddress != null && !isConnected) {
+                        OutlinedButton(
+                            onClick = {
+                                val intent = Intent(context, HeartRateService::class.java)
+                                intent.action = "CONNECT"
+                                intent.putExtra("device_address", savedDeviceAddress)
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                    context.startForegroundService(intent)
+                                } else {
+                                    context.startService(intent)
+                                }
+                            }
+                        ) { Text("重连") }
+                    }
+                    if (isConnected) {
+                        OutlinedButton(
+                            onClick = {
+                                val intent = Intent(context, HeartRateService::class.java)
+                                intent.action = "DISCONNECT"
+                                context.startService(intent)
+                            }
+                        ) { Text("断开连接") }
+                    }
+                    if (savedDeviceAddress != null) {
+                        OutlinedButton(
+                            onClick = {
+                                val intent = Intent(context, HeartRateService::class.java)
+                                intent.action = "CLEAR_SAVED_DEVICE"
+                                context.startService(intent)
+                                Toast.makeText(context, "已清除保存设备", Toast.LENGTH_SHORT).show()
+                            }
+                        ) { Text("清除保存设备") }
+                    }
+                }
+            }
+        }
+
         if (discoveredDevices.isNotEmpty()) {
             Text(
-                text = "发现的设备 (${discoveredDevices.size})",
+                text = "扫描发现的设备 (${discoveredDevices.size})",
                 style = MaterialTheme.typography.titleMedium
             )
             LazyColumn(
@@ -181,11 +243,9 @@ fun HealthScreen(settings: SettingsStore) {
         }
 
         // Heart rate report interval setting
-        var heartRateInterval by remember { mutableIntStateOf(30) }
+        val heartRateIntervalFlow by settings.heartRateReportInterval.collectAsState(initial = 30)
+        var heartRateInterval by remember(heartRateIntervalFlow) { mutableIntStateOf(heartRateIntervalFlow) }
         val scope = rememberCoroutineScope()
-        LaunchedEffect(Unit) {
-            heartRateInterval = settings.getHeartRateReportInterval()
-        }
 
         Surface(
             modifier = Modifier

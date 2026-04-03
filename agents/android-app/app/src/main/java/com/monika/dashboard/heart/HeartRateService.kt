@@ -90,15 +90,6 @@ class HeartRateService : Service() {
                 discoveredDevices = devices
                 DebugLog.log("心率", "扫描完成，找到 ${devices.size} 个设备")
                 
-                // Try to reconnect to saved device
-                val savedAddress = getSavedDeviceAddress()
-                if (savedAddress != null && !isConnected) {
-                    val device = devices.values.firstOrNull { it.address == savedAddress }
-                    if (device != null) {
-                        DebugLog.log("心率", "尝试重连已保存设备: ${device.name ?: savedAddress}")
-                        connectToDevice(device)
-                    }
-                }
             }
 
             override fun onError(message: String) {
@@ -124,8 +115,7 @@ class HeartRateService : Service() {
                     connectToDevice(device)
                 }
             } catch (e: Exception) {
-                DebugLog.log("心率", "直接连接失败，开始扫描: ${e.message}")
-                startScan()
+                DebugLog.log("心率", "直接连接失败: ${e.message}")
             }
         }
     }
@@ -134,12 +124,15 @@ class HeartRateService : Service() {
         when (intent?.action) {
             "START_SCAN" -> startScan()
             "STOP_SCAN" -> stopScan()
+            "DISCONNECT" -> disconnectCurrentDevice()
+            "CLEAR_SAVED_DEVICE" -> clearSavedDevice()
             "CONNECT" -> {
                 val address = intent.getStringExtra("device_address")
                 if (address != null) {
                     val device = discoveredDevices.values.firstOrNull { it.address == address }
+                        ?: heartRateManager.getRemoteDevice(address)
                     device?.let {
-                        connectedDeviceName = it.name ?: it.address
+                        connectedDeviceName = try { it.name ?: it.address } catch (_: SecurityException) { it.address }
                         connectToDevice(it)
                     }
                 }
@@ -184,6 +177,21 @@ class HeartRateService : Service() {
     fun stopScan() {
         heartRateManager.stopScan()
     }
+
+    fun disconnectCurrentDevice() {
+        heartRateManager.disconnect()
+        isConnected = false
+        connectedDeviceName = null
+        currentHeartRate = 0
+        DebugLog.log("心率", "手动断开当前设备")
+    }
+
+    fun clearSavedDevice() {
+        saveDeviceAddress(null)
+        DebugLog.log("心率", "已清除保存设备")
+    }
+
+    fun getSavedDeviceAddressPublic(): String? = getSavedDeviceAddress()
 
     fun connectToDevice(device: BluetoothDevice) {
         heartRateManager.connectToDevice(device)
