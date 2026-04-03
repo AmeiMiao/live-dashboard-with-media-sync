@@ -237,6 +237,24 @@ fun HealthScreen(settings: SettingsStore) {
         val heartRateIntervalFlow by settings.heartRateReportInterval.collectAsState(initial = 30)
         var heartRateInterval by remember(heartRateIntervalFlow) { mutableIntStateOf(heartRateIntervalFlow) }
         val scope = rememberCoroutineScope()
+        val lastReportTime = HeartRateService.lastHeartRateReportTime
+        val nowMillis = remember(tick) { System.currentTimeMillis() }
+        val remainingSeconds = remember(lastReportTime, heartRateInterval, nowMillis) {
+            if (lastReportTime <= 0L) null
+            else {
+                val next = lastReportTime + heartRateInterval * 1000L
+                val remain = ((next - nowMillis) / 1000L).coerceAtLeast(0L)
+                remain
+            }
+        }
+        val nextReportText = remember(lastReportTime, heartRateInterval) {
+            if (lastReportTime <= 0L) null
+            else {
+                val next = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+                    .format(java.util.Date(lastReportTime + heartRateInterval * 1000L))
+                next
+            }
+        }
 
         Surface(
             modifier = Modifier
@@ -278,6 +296,14 @@ fun HealthScreen(settings: SettingsStore) {
                     text = "心率变化时，间隔${heartRateInterval}秒上报一次到服务器",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = when {
+                        lastReportTime <= 0L -> "尚未开始上报"
+                        else -> "下一次预计上报时间：${nextReportText ?: "--:--:--"} / 距离下次上报还有 ${remainingSeconds ?: 0} 秒"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Secondary
                 )
             }
         }
