@@ -52,7 +52,7 @@ class HeartRateWorker(
         Log.i(TAG, "Running...")
         
         val intent = Intent(applicationContext, HeartRateService::class.java)
-        intent.action = "START_SCAN"
+        intent.action = "RECONNECT_SAVED_DEVICE"
         
         try {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
@@ -60,8 +60,8 @@ class HeartRateWorker(
             } else {
                 applicationContext.startService(intent)
             }
-            DebugLog.log("心率Worker", "服务启动命令已发送")
-            Log.i(TAG, "Service start command sent")
+            DebugLog.log("心率Worker", "服务保活命令已发送（仅重连已保存设备）")
+            Log.i(TAG, "Service keepalive command sent")
         } catch (e: Exception) {
             DebugLog.log("心率Worker", "启动失败: ${e.message}")
             Log.e(TAG, "Failed to start service", e)

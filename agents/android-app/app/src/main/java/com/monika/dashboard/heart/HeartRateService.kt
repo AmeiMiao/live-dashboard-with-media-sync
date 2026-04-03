@@ -105,19 +105,7 @@ class HeartRateService : Service() {
             Log.e(TAG, "Failed to start foreground", e)
         }
 
-        // Try to reconnect directly to saved device (faster than scanning)
-        val savedAddress = getSavedDeviceAddress()
-        if (savedAddress != null && !isConnected && heartRateManager.isBluetoothEnabled()) {
-            DebugLog.log("心率", "服务启动，尝试直接连接已保存设备: $savedAddress")
-            try {
-                val device = heartRateManager.getRemoteDevice(savedAddress)
-                if (device != null) {
-                    connectToDevice(device)
-                }
-            } catch (e: Exception) {
-                DebugLog.log("心率", "直接连接失败: ${e.message}")
-            }
-        }
+        reconnectSavedDevice()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -126,6 +114,7 @@ class HeartRateService : Service() {
             "STOP_SCAN" -> stopScan()
             "DISCONNECT" -> disconnectCurrentDevice()
             "CLEAR_SAVED_DEVICE" -> clearSavedDevice()
+            "RECONNECT_SAVED_DEVICE" -> reconnectSavedDevice()
             "CONNECT" -> {
                 val address = intent.getStringExtra("device_address")
                 if (address != null) {
@@ -176,6 +165,23 @@ class HeartRateService : Service() {
 
     fun stopScan() {
         heartRateManager.stopScan()
+    }
+
+    fun reconnectSavedDevice() {
+        val savedAddress = getSavedDeviceAddress()
+        if (savedAddress != null && !isConnected && heartRateManager.isBluetoothEnabled()) {
+            DebugLog.log("心率", "尝试直连已保存设备: $savedAddress")
+            try {
+                val device = heartRateManager.getRemoteDevice(savedAddress)
+                if (device != null) {
+                    connectToDevice(device)
+                } else {
+                    DebugLog.log("心率", "未找到已保存设备")
+                }
+            } catch (e: Exception) {
+                DebugLog.log("心率", "直连已保存设备失败: ${e.message}")
+            }
+        }
     }
 
     fun disconnectCurrentDevice() {
@@ -262,7 +268,8 @@ class HeartRateService : Service() {
         val contentText = when {
             connected && heartRate != null -> "心率: $heartRate bpm"
             connected -> "已连接，等待心率数据..."
-            else -> "正在扫描蓝牙设备..."
+            getSavedDeviceAddress() != null -> "后台保活中，等待自动重连..."
+            else -> "未连接蓝牙设备"
         }
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
