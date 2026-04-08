@@ -18,7 +18,7 @@ class HeartRateWorker(
         private const val INTERVAL_SECONDS = 30L
 
         fun schedule(context: Context) {
-            enqueueNext(context)
+            enqueueNext(context, ExistingWorkPolicy.KEEP)
             DebugLog.log("心率Worker", "已启动保活")
             Log.i(TAG, "Scheduled heart rate keepalive")
         }
@@ -29,7 +29,10 @@ class HeartRateWorker(
             Log.i(TAG, "Cancelled heart rate keepalive")
         }
 
-        private fun enqueueNext(context: Context) {
+        private fun enqueueNext(
+            context: Context,
+            policy: ExistingWorkPolicy = ExistingWorkPolicy.REPLACE
+        ) {
             val request = OneTimeWorkRequestBuilder<HeartRateWorker>()
                 .setInitialDelay(INTERVAL_SECONDS, TimeUnit.SECONDS)
                 .setConstraints(
@@ -41,7 +44,7 @@ class HeartRateWorker(
 
             WorkManager.getInstance(context).enqueueUniqueWork(
                 WORK_NAME,
-                ExistingWorkPolicy.REPLACE,
+                policy,
                 request
             )
         }

@@ -308,6 +308,8 @@ class BluetoothHeartRateManager(
         return try { device.name } catch (_: SecurityException) { device.address }
     }
 
+    fun getConnectedDeviceAddress(): String? = connectedDevice?.address
+
     fun getRemoteDevice(address: String): BluetoothDevice? {
         return try {
             bluetoothAdapter?.getRemoteDevice(address)

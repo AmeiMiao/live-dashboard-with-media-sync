@@ -70,13 +70,7 @@ class HeartRateService : Service() {
                 isConnected = connected
                 if (connected) {
                     connectedDeviceName = heartRateManager.getConnectedDeviceName()
-                    // Save the connected device address
-                    connectedDeviceName?.let { name ->
-                        val device = discoveredDevices.values.firstOrNull { d ->
-                            try { d.name == name } catch (_: SecurityException) { false }
-                        }
-                        device?.address?.let { saveDeviceAddress(it) }
-                    }
+                    heartRateManager.getConnectedDeviceAddress()?.let { saveDeviceAddress(it) }
                 } else {
                     connectedDeviceName = null
                     currentHeartRate = 0

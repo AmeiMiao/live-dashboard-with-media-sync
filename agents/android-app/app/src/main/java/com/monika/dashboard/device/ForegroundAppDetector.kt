@@ -79,6 +79,11 @@ class ForegroundAppDetector(
 
     private fun detectAndReport() {
         executor.execute {
+            if (ScreenStateReceiver.isIdleLocked(context)) {
+                DebugLog.log("前台检测", "跳过上报: 当前处于息屏待解锁状态")
+                return@execute
+            }
+
             if (!isDeviceReadyForForegroundReporting()) {
                 DebugLog.log("前台检测", "跳过上报: 当前处于锁屏或灭屏状态")
                 return@execute

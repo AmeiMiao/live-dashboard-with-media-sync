@@ -16,6 +16,20 @@ class ScreenStateReceiver(
     private val context: Context,
     private val settings: SettingsStore
 ) {
+    companion object {
+        private const val PREFS_NAME = "screen_state"
+        private const val KEY_IDLE_LOCKED = "idle_locked"
+
+        fun isIdleLocked(context: Context): Boolean {
+            return try {
+                context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    .getBoolean(KEY_IDLE_LOCKED, false)
+            } catch (_: Exception) {
+                false
+            }
+        }
+    }
+
     private val executor = Executors.newSingleThreadExecutor()
     private var registered = false
 
@@ -23,6 +37,7 @@ class ScreenStateReceiver(
         override fun onReceive(ctx: Context?, intent: Intent?) {
             when (intent?.action) {
                 Intent.ACTION_SCREEN_OFF -> {
+                    setIdleLocked(true)
                     DebugLog.log("屏幕", "息屏")
                     Log.i("ScreenState", "Screen OFF")
                     reportIdle()
@@ -30,6 +45,11 @@ class ScreenStateReceiver(
                 Intent.ACTION_SCREEN_ON -> {
                     DebugLog.log("屏幕", "亮屏")
                     Log.i("ScreenState", "Screen ON")
+                }
+                Intent.ACTION_USER_PRESENT -> {
+                    setIdleLocked(false)
+                    DebugLog.log("屏幕", "已解锁")
+                    Log.i("ScreenState", "User present")
                 }
             }
         }
@@ -40,6 +60,7 @@ class ScreenStateReceiver(
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_USER_PRESENT)
         }
         context.registerReceiver(receiver, filter)
         registered = true
@@ -51,6 +72,15 @@ class ScreenStateReceiver(
         runCatching { context.unregisterReceiver(receiver) }
         registered = false
         Log.i("ScreenState", "Receiver stopped")
+    }
+
+    private fun setIdleLocked(locked: Boolean) {
+        runCatching {
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_IDLE_LOCKED, locked)
+                .apply()
+        }
     }
 
     private fun reportIdle() {
