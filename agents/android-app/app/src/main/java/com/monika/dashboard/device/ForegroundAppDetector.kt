@@ -1,11 +1,13 @@
 package com.monika.dashboard.device
 
 import android.app.AppOpsManager
+import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
 import com.monika.dashboard.data.DebugLog
@@ -77,6 +79,11 @@ class ForegroundAppDetector(
 
     private fun detectAndReport() {
         executor.execute {
+            if (!isDeviceReadyForForegroundReporting()) {
+                DebugLog.log("前台检测", "跳过上报: 当前处于锁屏或灭屏状态")
+                return@execute
+            }
+
             val now = System.currentTimeMillis()
             val foregroundPackage = try {
                 getForegroundPackage()
@@ -120,6 +127,20 @@ class ForegroundAppDetector(
                 runCatching { client?.shutdown() }
             }
         }
+    }
+
+    private fun isDeviceReadyForForegroundReporting(): Boolean {
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+        if (powerManager != null && !powerManager.isInteractive) {
+            return false
+        }
+
+        val keyguardManager = context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
+        if (keyguardManager != null && keyguardManager.isKeyguardLocked) {
+            return false
+        }
+
+        return true
     }
 
     @Suppress("DEPRECATION")
