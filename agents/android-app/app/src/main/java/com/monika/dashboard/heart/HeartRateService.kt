@@ -14,6 +14,7 @@ import androidx.core.content.edit
 import com.monika.dashboard.R
 import com.monika.dashboard.data.DebugLog
 import com.monika.dashboard.data.SettingsStore
+import com.monika.dashboard.device.DeviceStateResolver
 import com.monika.dashboard.network.ReportClient
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -227,8 +228,9 @@ class HeartRateService : Service() {
         var client: ReportClient? = null
         try {
             client = ReportClient(url, token)
+            val appId = DeviceStateResolver.resolveCurrentAppId(applicationContext)
             val result = client.reportApp(
-                appId = "android",
+                appId = appId,
                 windowTitle = "",
                 heartRate = heartRate
             )

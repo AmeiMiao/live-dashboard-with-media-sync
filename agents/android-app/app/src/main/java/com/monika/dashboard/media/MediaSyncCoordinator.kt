@@ -1,8 +1,10 @@
 package com.monika.dashboard.media
 
+import android.content.Context
 import android.util.Log
 import com.monika.dashboard.data.DebugLog
 import com.monika.dashboard.data.SettingsStore
+import com.monika.dashboard.device.DeviceStateResolver
 import com.monika.dashboard.network.ReportClient
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -20,7 +22,7 @@ object MediaSyncCoordinator {
     @Volatile
     var lastSnapshot: MediaSnapshot? = null
 
-    fun handleSnapshot(snapshot: MediaSnapshot, settings: SettingsStore) {
+    fun handleSnapshot(snapshot: MediaSnapshot, settings: SettingsStore, context: Context) {
         lastSnapshot = snapshot
         executor.execute {
             val now = System.currentTimeMillis()
@@ -47,18 +49,19 @@ object MediaSyncCoordinator {
             var client: ReportClient? = null
             try {
                 client = ReportClient(url, token)
+                val appId = DeviceStateResolver.resolveCurrentAppId(context.applicationContext)
                 val result = if (hasContent) {
                     client.reportApp(
-                        appId = "android",
-                        windowTitle = "android",
+                        appId = appId,
+                        windowTitle = "",
                         musicTitle = normalizedTitle,
                         musicArtist = normalizedArtist,
                         musicApp = normalizedApp
                     )
                 } else {
                     client.reportApp(
-                        appId = "android",
-                        windowTitle = "android",
+                        appId = appId,
+                        windowTitle = "",
                         musicTitle = "",
                         musicArtist = "",
                         musicApp = ""

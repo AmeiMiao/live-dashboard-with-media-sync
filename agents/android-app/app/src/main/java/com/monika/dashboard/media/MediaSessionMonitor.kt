@@ -86,7 +86,8 @@ class MediaSessionMonitor(
                     playbackState = PlaybackStateEnum.STOPPED,
                     updatedAt = System.currentTimeMillis()
                 ),
-                settings
+                settings,
+                context
             )
         }
     }
@@ -124,7 +125,8 @@ class MediaSessionMonitor(
                                 playbackState = PlaybackStateEnum.STOPPED,
                                 updatedAt = System.currentTimeMillis()
                             ),
-                            settings
+                            settings,
+                            context
                         )
                     }
                 }
@@ -170,7 +172,8 @@ class MediaSessionMonitor(
                 playbackState = state,
                 updatedAt = System.currentTimeMillis()
             ),
-            settings
+            settings,
+            context
         )
     }
 }

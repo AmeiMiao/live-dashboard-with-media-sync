@@ -26,7 +26,7 @@ class MediaNotificationListenerService : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val extracted = MediaExtractor.fromNotification(sbn) ?: return
         val snapshot = extracted.copy(appName = PackageMapper.toDisplayName(extracted.packageName))
-        MediaSyncCoordinator.handleSnapshot(snapshot, settings)
+        MediaSyncCoordinator.handleSnapshot(snapshot, settings, applicationContext)
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
@@ -42,7 +42,8 @@ class MediaNotificationListenerService : NotificationListenerService() {
                 playbackState = PlaybackStateEnum.STOPPED,
                 updatedAt = System.currentTimeMillis()
             ),
-            settings
+            settings,
+            applicationContext
         )
     }
 }

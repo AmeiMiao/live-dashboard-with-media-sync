@@ -1,19 +1,14 @@
 package com.monika.dashboard.service
 
-import android.app.AppOpsManager
-import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.app.usage.UsageStatsManager
 import android.os.BatteryManager
-import android.os.Build
-import android.os.PowerManager
 import android.util.Log
 import androidx.work.*
 import com.monika.dashboard.data.DebugLog
 import com.monika.dashboard.data.SettingsStore
-import com.monika.dashboard.device.ScreenStateReceiver
+import com.monika.dashboard.device.DeviceStateResolver
 import com.monika.dashboard.network.ReportClient
 import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
@@ -119,73 +114,7 @@ class HeartbeatWorker(
     }
 
     private fun resolveHeartbeatAppId(): String {
-        if (ScreenStateReceiver.isIdleLocked(applicationContext)) {
-            return "idle"
-        }
-
-        val powerManager = applicationContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
-        if (powerManager != null && !powerManager.isInteractive) {
-            return "idle"
-        }
-
-        val keyguardManager = applicationContext.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
-        if (keyguardManager != null && keyguardManager.isKeyguardLocked) {
-            return "idle"
-        }
-
-        if (!hasUsageStatsPermission()) {
-            return "android"
-        }
-
-        val foregroundPackage = getForegroundPackage() ?: return "android"
-        return if (foregroundPackage == applicationContext.packageName) {
-            "android"
-        } else {
-            foregroundPackage
-        }
-    }
-
-    private fun hasUsageStatsPermission(): Boolean {
-        val appOps = applicationContext.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager
-            ?: return false
-        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            appOps.unsafeCheckOpNoThrow(
-                AppOpsManager.OPSTR_GET_USAGE_STATS,
-                android.os.Process.myUid(),
-                applicationContext.packageName
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            appOps.checkOpNoThrow(
-                AppOpsManager.OPSTR_GET_USAGE_STATS,
-                android.os.Process.myUid(),
-                applicationContext.packageName
-            )
-        }
-        return mode == AppOpsManager.MODE_ALLOWED
-    }
-
-    private fun getForegroundPackage(): String? {
-        val usageStatsManager = applicationContext.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
-            ?: return null
-        val now = System.currentTimeMillis()
-        val stats = usageStatsManager.queryUsageStats(
-            UsageStatsManager.INTERVAL_DAILY,
-            now - 60_000,
-            now
-        )
-
-        if (stats.isNullOrEmpty()) return null
-
-        var latestPackage: String? = null
-        var latestTime = 0L
-        for (stat in stats) {
-            if (stat.lastTimeUsed > latestTime) {
-                latestTime = stat.lastTimeUsed
-                latestPackage = stat.packageName
-            }
-        }
-        return latestPackage
+        return DeviceStateResolver.resolveCurrentAppId(applicationContext)
     }
 
     private fun getBatteryInfo(): Pair<Int, Boolean>? {
