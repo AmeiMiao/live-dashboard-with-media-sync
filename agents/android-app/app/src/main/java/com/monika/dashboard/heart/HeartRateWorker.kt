@@ -35,11 +35,6 @@ class HeartRateWorker(
         ) {
             val request = OneTimeWorkRequestBuilder<HeartRateWorker>()
                 .setInitialDelay(INTERVAL_SECONDS, TimeUnit.SECONDS)
-                .setConstraints(
-                    Constraints.Builder()
-                        .setRequiredNetworkType(NetworkType.CONNECTED)
-                        .build()
-                )
                 .build()
 
             WorkManager.getInstance(context).enqueueUniqueWork(
@@ -48,6 +43,7 @@ class HeartRateWorker(
                 request
             )
         }
+
     }
 
     override suspend fun doWork(): Result {

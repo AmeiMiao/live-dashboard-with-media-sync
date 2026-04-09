@@ -154,8 +154,18 @@ private fun MainContent(settings: SettingsStore, modifier: Modifier = Modifier) 
             HeartbeatWorker.schedule(context, reportInterval)
         }
 
-        // Start heart rate keepalive
+        // Start heart rate keepalive and trigger an immediate reconnect attempt
         HeartRateWorker.schedule(context)
+        runCatching {
+            val intent = Intent(context, HeartRateService::class.java).apply {
+                action = "RECONNECT_SAVED_DEVICE"
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
     }
 
     Column(modifier = modifier.fillMaxSize()) {

@@ -27,6 +27,8 @@ class HeartRateService : Service() {
         private const val NOTIFICATION_ID = 1002
         private const val PREFS_NAME = "heart_rate_prefs"
         private const val KEY_DEVICE_ADDRESS = "last_connected_device_address"
+        private const val INITIAL_RECONNECT_DELAY_MS = 5_000L
+        private const val MAX_RECONNECT_DELAY_MS = 60_000L
         
         @Volatile var isServiceRunning = false
             private set
@@ -45,6 +47,11 @@ class HeartRateService : Service() {
     private lateinit var settings: SettingsStore
     private lateinit var heartRateManager: BluetoothHeartRateManager
     private val executor = Executors.newSingleThreadExecutor()
+    private val reconnectExecutor = Executors.newSingleThreadExecutor()
+    @Volatile private var reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS
+    @Volatile private var manualDisconnectRequested = false
+    @Volatile private var reconnectScheduled = false
+    @Volatile private var nextHeartRateReportAt: Long = 0L
     private var lastReportTime: Long = 0
     private var lastHeartRate: Int = 0
 
@@ -70,14 +77,22 @@ class HeartRateService : Service() {
             override fun onConnectionStateChanged(connected: Boolean) {
                 isConnected = connected
                 if (connected) {
+                    manualDisconnectRequested = false
+                    reconnectScheduled = false
+                    reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS
                     connectedDeviceName = heartRateManager.getConnectedDeviceName()
                     heartRateManager.getConnectedDeviceAddress()?.let { saveDeviceAddress(it) }
                 } else {
                     connectedDeviceName = null
                     currentHeartRate = 0
+                    if (!manualDisconnectRequested) {
+                        scheduleReconnect()
+                    }
                 }
                 DebugLog.log("心率", if (connected) "已连接" else "已断开")
+                updateNotification(connected, if (connected) currentHeartRate.takeIf { it > 0 } else null)
             }
+
 
             override fun onScanResult(device: BluetoothDevice) {
                 // Real-time scan result - no action needed
@@ -133,6 +148,7 @@ class HeartRateService : Service() {
         isServiceRunning = false
         isConnected = false
         discoveredDevices = emptyMap()
+        reconnectExecutor.shutdownNow()
         heartRateManager.disconnect()
         super.onDestroy()
     }
@@ -168,6 +184,7 @@ class HeartRateService : Service() {
         val savedAddress = getSavedDeviceAddress()
         if (savedAddress != null && !isConnected && heartRateManager.isBluetoothEnabled()) {
             DebugLog.log("心率", "尝试直连已保存设备: $savedAddress")
+            updateNotification(false)
             try {
                 val device = heartRateManager.getRemoteDevice(savedAddress)
                 if (device != null) {
@@ -181,15 +198,36 @@ class HeartRateService : Service() {
         }
     }
 
+    private fun scheduleReconnect() {
+        val savedAddress = getSavedDeviceAddress()
+        if (savedAddress.isNullOrEmpty()) return
+        if (!heartRateManager.isBluetoothEnabled()) return
+        if (reconnectScheduled) return
+
+        val delayMs = reconnectDelayMs
+        reconnectScheduled = true
+        DebugLog.log("心率", "将在 ${delayMs / 1000} 秒后自动重连")
+        reconnectExecutor.execute {
+            try {
+                Thread.sleep(delayMs)
+                if (!isServiceRunning || isConnected || manualDisconnectRequested) return@execute
+                reconnectSavedDevice()
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+            } finally {
+                reconnectScheduled = false
+                reconnectDelayMs = (delayMs * 2).coerceAtMost(MAX_RECONNECT_DELAY_MS)
+            }
+        }
+    }
+
     fun disconnectCurrentDevice() {
+        manualDisconnectRequested = true
         heartRateManager.disconnect()
         isConnected = false
         connectedDeviceName = null
         currentHeartRate = 0
-        try {
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.notify(NOTIFICATION_ID, createNotification(false))
-        } catch (_: Exception) {}
+        updateNotification(false)
         DebugLog.log("心率", "手动断开当前设备")
     }
 
@@ -199,9 +237,11 @@ class HeartRateService : Service() {
     }
 
     fun connectToDevice(device: BluetoothDevice) {
+        manualDisconnectRequested = false
         heartRateManager.connectToDevice(device)
         val deviceName = try { device.name ?: device.address } catch (_: SecurityException) { device.address }
         DebugLog.log("心率", "正在连接: $deviceName")
+        updateNotification(false)
     }
 
     private fun handleHeartRate(heartRate: Int) {
@@ -217,6 +257,8 @@ class HeartRateService : Service() {
         lastReportTime = now
         lastHeartRate = heartRate
         lastHeartRateReportTime = now
+        nextHeartRateReportAt = now + interval
+        updateNotification(true, heartRate)
         executor.execute { reportHeartRate(heartRate) }
     }
 
@@ -238,6 +280,7 @@ class HeartRateService : Service() {
             if (result.isSuccess) {
                 DebugLog.log("心率", "上报成功: $heartRate bpm")
                 Log.i(TAG, "Reported heart rate: $heartRate")
+                updateNotification(true, heartRate)
             } else {
                 DebugLog.log("心率", "上报失败: ${result.exceptionOrNull()?.message}")
             }
@@ -262,12 +305,34 @@ class HeartRateService : Service() {
         manager.createNotificationChannel(channel)
     }
 
+    private fun updateNotification(connected: Boolean, heartRate: Int? = null) {
+        try {
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.notify(NOTIFICATION_ID, createNotification(connected, heartRate))
+        } catch (_: Exception) {}
+    }
+
     private fun createNotification(connected: Boolean, heartRate: Int? = null): Notification {
         val contentText = when {
-            connected && heartRate != null -> "心率: $heartRate bpm"
-            connected -> "已连接，等待心率数据..."
-            getSavedDeviceAddress() != null -> "后台保活中，等待自动重连..."
-            else -> "未连接蓝牙设备"
+            connected -> {
+                val intervalMillis = try {
+                    runBlocking { settings.heartRateReportInterval.first() }.toLong() * 1000L
+                } catch (_: Exception) {
+                    30_000L
+                }
+                val displayTimeMillis = if (lastHeartRateReportTime > 0L) {
+                    lastHeartRateReportTime + intervalMillis
+                } else if (nextHeartRateReportAt > 0L) {
+                    nextHeartRateReportAt
+                } else {
+                    System.currentTimeMillis() + intervalMillis
+                }
+                val displayTime = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+                    .format(java.util.Date(displayTimeMillis))
+                "持续监测中，预计下次上报时间 $displayTime"
+            }
+            getSavedDeviceAddress() != null -> "蓝牙未连接，正在尝试自动重连"
+            else -> "蓝牙未连接，请检查"
         }
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
