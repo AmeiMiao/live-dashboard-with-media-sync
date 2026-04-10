@@ -133,7 +133,21 @@ class MediaSessionMonitor(
                 controller.registerCallback(callback)
                 callbacks[token] = callback
             }
-            emitSnapshot(controller)
+
+            // Only emit snapshots for controllers that are actively playing.
+            // Stale/zombie controllers (paused/stopped but not yet destroyed by
+            // Android) still carry old metadata and would re-report stale music.
+            val pbState = controller.playbackState?.state
+            val isActive = pbState == PlaybackState.STATE_PLAYING ||
+                pbState == PlaybackState.STATE_BUFFERING ||
+                pbState == PlaybackState.STATE_FAST_FORWARDING ||
+                pbState == PlaybackState.STATE_REWINDING ||
+                pbState == PlaybackState.STATE_SKIPPING_TO_NEXT ||
+                pbState == PlaybackState.STATE_SKIPPING_TO_PREVIOUS ||
+                pbState == PlaybackState.STATE_SKIPPING_TO_QUEUE_ITEM
+            if (isActive) {
+                emitSnapshot(controller)
+            }
         }
     }
 

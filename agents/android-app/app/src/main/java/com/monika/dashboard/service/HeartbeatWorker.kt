@@ -9,6 +9,8 @@ import androidx.work.*
 import com.monika.dashboard.data.DebugLog
 import com.monika.dashboard.data.SettingsStore
 import com.monika.dashboard.device.DeviceStateResolver
+import com.monika.dashboard.media.MediaSyncCoordinator
+import com.monika.dashboard.media.PlaybackStateEnum
 import com.monika.dashboard.network.ReportClient
 import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
@@ -88,11 +90,36 @@ class HeartbeatWorker(
             val appId = resolveHeartbeatAppId()
             val battery = getBatteryInfo()
 
+            // Carry current music state so heartbeat doesn't cause
+            // server merge to restore stale music data
+            val snap = MediaSyncCoordinator.lastSnapshot
+            val isPlaying = snap != null &&
+                snap.playbackState == PlaybackStateEnum.PLAYING &&
+                (snap.title?.isNotBlank() == true || snap.artist?.isNotBlank() == true)
+
+            val musicTitle: String?
+            val musicArtist: String?
+            val musicApp: String?
+
+            if (isPlaying) {
+                musicTitle = snap!!.title?.trim().orEmpty()
+                musicArtist = snap.artist?.trim().orEmpty()
+                musicApp = snap.appName?.trim().orEmpty()
+            } else {
+                // Explicitly send empty strings to clear stale music on server
+                musicTitle = ""
+                musicArtist = ""
+                musicApp = ""
+            }
+
             val result = client.reportApp(
                 appId = appId,
                 windowTitle = "",
                 batteryPercent = battery?.first,
-                batteryCharging = battery?.second
+                batteryCharging = battery?.second,
+                musicTitle = musicTitle,
+                musicArtist = musicArtist,
+                musicApp = musicApp
             )
 
             if (result.isSuccess) {
